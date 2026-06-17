@@ -1,0 +1,101 @@
+// Package config provides configuration parsing, validation, and hot-reloading support.
+// It manages the parsing of user-specific .env files and environment variables,
+// exposing a strongly typed configuration object to the rest of the application.
+package config
+
+import (
+	"fmt"
+	"os"
+	"os/user"
+	"path/filepath"
+	"strings"
+
+	"github.com/joho/godotenv"
+)
+
+// Config holds the validated application configuration required for establishing
+// the Gateway connection and filtering incoming events.
+type Config struct {
+	// Token is the Discord Bot authentication token.
+	Token string
+	
+	// TargetChannelIDs is a lookup map of Discord Channel IDs that the application monitors.
+	TargetChannelIDs map[string]bool
+	
+	// TargetBytes contains pre-computed byte slices representing the JSON fragments
+	// for the target channels (e.g., []byte(`"channel_id":"123"`)).
+	// This enables zero-allocation string searching on the hot path.
+	TargetBytes [][]byte
+}
+
+// GetUserDir resolves the absolute path to the current user's dedicated configuration
+// directory, specifically enforcing the `/opt/discord_gateway/$USER` structure.
+// This ensures secure, user-isolated configuration loading in multi-tenant environments.
+func GetUserDir() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine current user: %w", err)
+	}
+	return filepath.Join("/opt/discord_gateway", u.Username), nil
+}
+
+// Load parses the .env file from the user's specific /opt directory.
+// It falls back to standard OS environment variables if the file cannot be parsed.
+// It strictly validates required fields and pre-computes data structures optimized
+// for the zero-allocation hot path.
+func Load() (*Config, error) {
+	dir, err := GetUserDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve user directory: %w", err)
+	}
+	envPath := filepath.Join(dir, ".env")
+
+	// Attempt to load the .env file.
+	// We intentionally suppress the error here because the godotenv library
+	// throws an error if the file doesn't exist, but we still want to allow
+	// falling back to system environment variables.
+	envMap, err := godotenv.Read(envPath)
+	if err != nil {
+		envMap = make(map[string]string) // Fallback if file is missing or unreadable
+	}
+
+	// Resolve the Discord token, preferring the .env file over the system environment.
+	token := envMap["DISCORD_TOKEN"]
+	if token == "" {
+		token = os.Getenv("DISCORD_TOKEN")
+	}
+
+	// Resolve the target channel IDs, preferring the .env file.
+	channelIDsStr := envMap["CHANNEL_IDS"]
+	if channelIDsStr == "" {
+		channelIDsStr = os.Getenv("CHANNEL_IDS")
+	}
+
+	// Enforce strict validation on required configuration keys.
+	if token == "" {
+		return nil, fmt.Errorf("DISCORD_TOKEN must be set in %s or environment", envPath)
+	}
+	if channelIDsStr == "" {
+		return nil, fmt.Errorf("CHANNEL_IDS must be set in %s or environment", envPath)
+	}
+
+	cfg := &Config{
+		Token:            token,
+		TargetChannelIDs: make(map[string]bool),
+	}
+
+	// Process the comma-separated channel IDs and compute the hot-path signatures.
+	for _, id := range strings.Split(channelIDsStr, ",") {
+		cleanID := strings.TrimSpace(id)
+		if cleanID != "" {
+			cfg.TargetChannelIDs[cleanID] = true
+			
+			// Pre-compute the byte string signatures for zero-allocation searching.
+			// By compiling this pattern exactly as it appears in the Discord JSON payload,
+			// the handler can bypass expensive standard library unmarshaling.
+			cfg.TargetBytes = append(cfg.TargetBytes, []byte(`"channel_id":"`+cleanID+`"`))
+		}
+	}
+
+	return cfg, nil
+}
