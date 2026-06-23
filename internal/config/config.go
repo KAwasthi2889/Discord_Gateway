@@ -38,6 +38,10 @@ type Config struct {
 	// MinAgeDays is the minimum account age in days for an auto-revive.
 	// Defaults to 365 if not specified.
 	MinAgeDays int
+
+	// DailyQuota is the maximum number of successful revives allowed per day.
+	// Clamped to 1–15. Defaults to 15 if not specified or out of range.
+	DailyQuota int
 }
 
 // GetUserDir resolves the absolute path to the current user's dedicated configuration
@@ -109,6 +113,16 @@ func Load() (*Config, error) {
 		minAgeDays = 365
 	}
 
+	// Resolve daily quota (default: 15, clamped to 1–15)
+	dailyQuotaStr := envMap["DAILY_QUOTA"]
+	if dailyQuotaStr == "" {
+		dailyQuotaStr = os.Getenv("DAILY_QUOTA")
+	}
+	dailyQuota, err := strconv.Atoi(dailyQuotaStr)
+	if err != nil || dailyQuota < 1 || dailyQuota > 15 {
+		dailyQuota = 15
+	}
+
 	// Enforce strict validation on required configuration keys.
 	if token == "" {
 		return nil, fmt.Errorf("DISCORD_TOKEN must be set in %s or environment", envPath)
@@ -123,6 +137,7 @@ func Load() (*Config, error) {
 		NoHistoryAllowed: strings.ToLower(noHistoryStr) == "true",
 		RateLimit:        rateLimit,
 		MinAgeDays:       minAgeDays,
+		DailyQuota:       dailyQuota,
 	}
 
 	// Process the comma-separated channel IDs and compute the hot-path signatures.

@@ -49,17 +49,17 @@ func IsPaidRegularRevive(cfg *config.Config, data []byte) (bool, string) {
 	return true, ""
 }
 
-// ExtractProfileLink scans a raw JSON byte slice for a Torn profile URL.
+// ExtractProfileLinkAndXID scans a raw JSON byte slice for a Torn profile URL.
 // It performs a direct byte index search for the known prefix and dynamically
 // extracts the subsequent numeric XID (Player ID).
 //
-// Returns the complete URL string if found, or an empty string if omitted or malformed.
+// Returns the complete URL string and the raw XID if found, or empty strings if omitted or malformed.
 // Because it slices the original byte array, it maintains zero allocations until
 // the final string cast.
-func ExtractProfileLink(cfg *config.Config, data []byte) string {
+func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, data []byte) (string, string) {
 	idx := bytes.Index(data, tornProfilePrefix)
 	if idx == -1 {
-		return ""
+		return "", ""
 	}
 
 	// Calculate the start of the numeric XID
@@ -72,11 +72,16 @@ func ExtractProfileLink(cfg *config.Config, data []byte) string {
 
 	xidBytes := data[idx+len(tornProfilePrefix) : end]
 	if len(xidBytes) == 0 {
-		return "" // Invalid or missing XID
+		return "", "" // Invalid or missing XID
 	}
 
+	xidStr := string(xidBytes)
+
 	// Cast the extracted slice to a string. This is the only allocation in this function.
-	// Append #autorevive={MinAgeDays} so the userscript knows this was opened by the gateway
-	// and what the configured minimum age threshold is.
-	return string(data[idx:end]) + "#autorevive=" + strconv.Itoa(cfg.MinAgeDays)
+	// Append #autorevive={MinAgeDays}&cbport={callbackPort} so the userscript knows:
+	//   1. This tab was opened by the gateway (autorevive trigger)
+	//   2. The configured minimum age threshold
+	//   3. Where to send the success callback
+	link := string(data[idx:end]) + "#autorevive=" + strconv.Itoa(cfg.MinAgeDays) + "&cbport=" + strconv.Itoa(callbackPort)
+	return link, xidStr
 }

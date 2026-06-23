@@ -22,6 +22,7 @@ var suppressedPrefixes = []string{
 	"Resume sent",
 	"Invalid Session received.",
 	"Zombie connection detected",
+	"callback_server: listening on localhost",
 }
 
 // FilteredWriter wraps an io.Writer and silently drops log lines that match

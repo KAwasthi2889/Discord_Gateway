@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"log"
 	"os"
+	"time"
 
 	"discord_gateway/internal/config"
 )
@@ -20,24 +21,51 @@ type Handler struct {
 
 	// logger persists matched payloads to disk asynchronously.
 	logger *MessageLogger
+
+	// quota enforces the daily revive ceiling. Persisted to disk across restarts.
+	quota *DailyQuota
+
+	// cache holds Discord payloads temporarily until the JS callback confirms success/failure.
+	cache *PayloadCache
+
+	// callbackPort is the random OS-assigned port for the JS → Go success callback.
+	callbackPort int
 }
 
 // NewHandler initializes and returns a new Torn orchestrator.
-// It wires up the necessary sub-components, such as the rate limiter and the CSV logger.
-func NewHandler(cfg *config.Config, logFile *os.File) *Handler {
+// It wires up the necessary sub-components, such as the rate limiter, the CSV logger,
+// the daily quota system, and the HTTP callback server.
+func NewHandler(cfg *config.Config, logFile *os.File, userDir string) *Handler {
+	quota := NewDailyQuota(cfg.DailyQuota, userDir)
+	logger := NewMessageLogger(logFile)
+	cache := NewPayloadCache(40 * time.Second)
+
+	cbPort, err := StartCallbackServer(quota, cache, logger)
+	if err != nil {
+		log.Printf("handler: WARNING — callback server failed to start: %v", err)
+		log.Println("handler: daily quota will still gate browser launches, but success tracking is disabled")
+	}
+
 	return &Handler{
-		cfg:     cfg,
-		browser: NewBrowserLauncher(cfg),
-		logger:  NewMessageLogger(logFile),
+		cfg:          cfg,
+		browser:      NewBrowserLauncher(cfg),
+		logger:       logger,
+		quota:        quota,
+		cache:        cache,
+		callbackPort: cbPort,
 	}
 }
 
 // UpdateConfig safely swaps the configuration pointer during a hot-reload event.
 // Because the handler's execution is synchronous within the read pump, this pointer
 // swap is safe as long as it occurs between message processing cycles.
+//
+// The daily quota limit is updated but the used count is preserved to prevent
+// gaming the quota by editing .env mid-day.
 func (h *Handler) UpdateConfig(cfg *config.Config) {
 	h.cfg = cfg
 	h.browser = NewBrowserLauncher(cfg)
+	h.quota.UpdateLimit(cfg.DailyQuota)
 }
 
 // OnMessageCreate is the primary event sink registered with the Discord Client.
@@ -72,14 +100,26 @@ func (h *Handler) OnMessageCreate(data []byte) {
 	}
 
 	if isCountry && ok {
-		if link := ExtractProfileLink(h.cfg, data); link != "" {
+		// Stage 2.5: Daily quota gate — reject early if today's ceiling is hit.
+		if !h.quota.Allow() {
+			payloadCopy := make([]byte, len(data))
+			copy(payloadCopy, data)
+			go func(payload []byte) {
+				log.Println("A new request arrived but rejected due to daily quota")
+				if rec := ExtractRecord(payload); rec != nil {
+					log.Printf("  → %s", rec.FormatCSV())
+				}
+			}(payloadCopy)
+			return
+		}
+
+		if link, xid := ExtractProfileLinkAndXID(h.cfg, h.callbackPort, data); link != "" {
 			if h.browser.Open(link) {
-				// Stage 4: Low-priority data persistence (Deferred Allocation)
-				// Dispatched asynchronously to preserve the hot path.
+				// Stage 4: Cache payload and wait for callback (Deferred Allocation)
 				// Copy the payload to avoid a data race with the websocket read buffer.
 				logCopy := make([]byte, len(data))
 				copy(logCopy, data)
-				go h.logger.Log(logCopy)
+				h.cache.Add(xid, logCopy)
 			} else {
 				log.Println("A new request arrived but rejected due to rate limit")
 			}

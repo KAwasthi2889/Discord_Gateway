@@ -60,7 +60,7 @@ func main() {
 	client := discord.NewClient(cfg)
 	
 	// Initialize the domain-specific logic handler for Torn events.
-	tornHandler := torn.NewHandler(cfg, logFile)
+	tornHandler := torn.NewHandler(cfg, logFile, userDir)
 
 	// Bind the Torn handler to the Discord client's MESSAGE_CREATE event pipeline.
 	client.RegisterMessageCreateHandler(tornHandler.OnMessageCreate)
