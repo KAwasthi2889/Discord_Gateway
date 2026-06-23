@@ -7,7 +7,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -66,23 +65,18 @@ func main() {
 			return
 		}
 
-		// Re-marshal the raw byte payload with indentation for human readability.
-		var prettyJSON bytes.Buffer
-		if err := json.Indent(&prettyJSON, data, "", "  "); err != nil {
-			log.Printf("Failed to parse incoming JSON payload: %v\nRaw: %s", err, string(data))
-			return
-		}
-
-		// Construct a clearly delimited output block including a timestamp.
+		// Dump the exact raw payload as received from Discord, unmodified.
+		// No json.Indent or re-marshaling — preserves the exact byte sequence
+		// so we can verify what Discord actually sends.
 		output := fmt.Sprintf("\n========== NEW MESSAGE AT %s ==========\n%s\n======================================================\n",
 			time.Now().Format("2006-01-02 15:04:05"),
-			prettyJSON.String(),
+			string(data),
 		)
 
 		// Print a concise notification to standard output to indicate arrival without cluttering the terminal.
 		fmt.Println("A new message has arrived...")
 
-		// Persist the full formatted payload to the rotating dump file for deeper analysis.
+		// Persist the full raw payload to the rotating dump file for deeper analysis.
 		if _, err := dumpFile.Write([]byte(output)); err != nil {
 			log.Printf("Failed to write payload to raw dump file: %v", err)
 		}

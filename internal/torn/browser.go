@@ -7,6 +7,8 @@ import (
 	"log"
 	"os/exec"
 	"time"
+
+	"discord_gateway/internal/config"
 )
 
 // BrowserLauncher provides a controlled, rate-limited mechanism for launching
@@ -17,12 +19,12 @@ type BrowserLauncher struct {
 }
 
 // NewBrowserLauncher creates a new BrowserLauncher instance initialized with a
-// predefined rate limit policy (currently capped at 5 executions per minute).
+// rate limit policy defined in the configuration (defaulting to 5 per minute).
 // This limit is crucial to avoid locking up the desktop environment when high
 // volumes of matched events occur.
-func NewBrowserLauncher() *BrowserLauncher {
+func NewBrowserLauncher(cfg *config.Config) *BrowserLauncher {
 	return &BrowserLauncher{
-		limiter: NewRateLimiter(5, time.Minute),
+		limiter: NewRateLimiter(cfg.RateLimit, time.Minute),
 	}
 }
 

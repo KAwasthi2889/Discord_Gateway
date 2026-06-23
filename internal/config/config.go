@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -26,6 +27,17 @@ type Config struct {
 	// for the target channels (e.g., []byte(`"channel_id":"123"`)).
 	// This enables zero-allocation string searching on the hot path.
 	TargetBytes [][]byte
+
+	// NoHistoryAllowed determines if requests with no past revives are accepted.
+	NoHistoryAllowed bool
+
+	// RateLimit is the maximum number of browser launches allowed per minute.
+	// Defaults to 5 if not specified.
+	RateLimit int
+
+	// MinAgeDays is the minimum account age in days for an auto-revive.
+	// Defaults to 365 if not specified.
+	MinAgeDays int
 }
 
 // GetUserDir resolves the absolute path to the current user's dedicated configuration
@@ -71,6 +83,32 @@ func Load() (*Config, error) {
 		channelIDsStr = os.Getenv("CHANNEL_IDS")
 	}
 
+	// Resolve the no history allowed flag.
+	noHistoryStr := envMap["NO_HISTORY_ALLOWED"]
+	if noHistoryStr == "" {
+		noHistoryStr = os.Getenv("NO_HISTORY_ALLOWED")
+	}
+
+	// Resolve rate limit (default: 5)
+	rateLimitStr := envMap["RATE_LIMIT"]
+	if rateLimitStr == "" {
+		rateLimitStr = os.Getenv("RATE_LIMIT")
+	}
+	rateLimit, err := strconv.Atoi(rateLimitStr)
+	if err != nil || rateLimit <= 0 {
+		rateLimit = 5
+	}
+
+	// Resolve min age days (default: 365)
+	minAgeStr := envMap["MIN_AGE_DAYS"]
+	if minAgeStr == "" {
+		minAgeStr = os.Getenv("MIN_AGE_DAYS")
+	}
+	minAgeDays, err := strconv.Atoi(minAgeStr)
+	if err != nil || minAgeDays <= 0 {
+		minAgeDays = 365
+	}
+
 	// Enforce strict validation on required configuration keys.
 	if token == "" {
 		return nil, fmt.Errorf("DISCORD_TOKEN must be set in %s or environment", envPath)
@@ -82,6 +120,9 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Token:            token,
 		TargetChannelIDs: make(map[string]bool),
+		NoHistoryAllowed: strings.ToLower(noHistoryStr) == "true",
+		RateLimit:        rateLimit,
+		MinAgeDays:       minAgeDays,
 	}
 
 	// Process the comma-separated channel IDs and compute the hot-path signatures.

@@ -27,7 +27,7 @@ type Handler struct {
 func NewHandler(cfg *config.Config, logFile *os.File) *Handler {
 	return &Handler{
 		cfg:     cfg,
-		browser: NewBrowserLauncher(),
+		browser: NewBrowserLauncher(cfg),
 		logger:  NewMessageLogger(logFile),
 	}
 }
@@ -37,6 +37,7 @@ func NewHandler(cfg *config.Config, logFile *os.File) *Handler {
 // swap is safe as long as it occurs between message processing cycles.
 func (h *Handler) UpdateConfig(cfg *config.Config) {
 	h.cfg = cfg
+	h.browser = NewBrowserLauncher(cfg)
 }
 
 // OnMessageCreate is the primary event sink registered with the Discord Client.
@@ -56,12 +57,29 @@ func (h *Handler) OnMessageCreate(data []byte) {
 		return
 	}
 
+	// Stage 1.5: Discard normal chat messages and other bot alerts.
+	// We only care about payloads that contain "Revive Request".
+	if !bytes.Contains(data, []byte("Revive Request")) {
+		return
+	}
+
 	// Stage 2 & 3: High-priority extraction and browser launch (Zero Allocation Hot Path)
-	if IsTornCountry(data) && IsPaidRegularRevive(data) {
-		if link := ExtractProfileLink(data); link != "" {
+	isCountry := IsTornCountry(data)
+	var ok bool
+	var rejectReason string
+	if isCountry {
+		ok, rejectReason = IsPaidRegularRevive(cfg, data)
+	}
+
+	if isCountry && ok {
+		if link := ExtractProfileLink(h.cfg, data); link != "" {
 			if h.browser.Open(link) {
 				// Stage 4: Low-priority data persistence (Deferred Allocation)
-				h.logger.Log(cfg, data)
+				// Dispatched asynchronously to preserve the hot path.
+				// Copy the payload to avoid a data race with the websocket read buffer.
+				logCopy := make([]byte, len(data))
+				copy(logCopy, data)
+				go h.logger.Log(logCopy)
 			} else {
 				log.Println("A new request arrived but rejected due to rate limit")
 			}
@@ -71,16 +89,27 @@ func (h *Handler) OnMessageCreate(data []byte) {
 	} else {
 		// Determine rejection reason
 		var reason string
-		if !IsTornCountry(data) {
+		if !isCountry {
 			reason = "country"
-		} else if !IsPaidRegularRevive(data) {
-			reason = "0 revives"
+		} else if !ok {
+			reason = rejectReason
 		}
-		log.Printf("A new request arrived but rejected due to %s", reason)
-		// Log the record details to gateway.log for later verification
-		if rec := ExtractRecord(cfg, data); rec != nil {
-			log.Printf("  → %s", rec.FormatCSV())
-		}
+
+		// Log asynchronously to prevent the heavy json.Unmarshal in ExtractRecord
+		// from blocking the WebSocket read pump on rapid rejected events.
+		//
+		// CRITICAL FIX: The underlying websocket read buffer might be overwritten by
+		// the next incoming message. We MUST create a copy of the payload slice
+		// before passing it to the asynchronous goroutine.
+		payloadCopy := make([]byte, len(data))
+		copy(payloadCopy, data)
+
+		go func(r string, payload []byte) {
+			log.Printf("A new request arrived but rejected due to %s", r)
+			if rec := ExtractRecord(payload); rec != nil {
+				log.Printf("  → %s", rec.FormatCSV())
+			}
+		}(reason, payloadCopy)
 	}
 }
 
@@ -95,4 +124,3 @@ func isTargetChannel(cfg *config.Config, data []byte) bool {
 	}
 	return false
 }
-

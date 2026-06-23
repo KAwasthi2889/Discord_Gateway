@@ -1,0 +1,1 @@
+/home/ever/Code/Learning/Javascript/Web Scripts/Fast Revive/fast_revive.js

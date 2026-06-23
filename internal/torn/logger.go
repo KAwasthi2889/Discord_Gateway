@@ -9,7 +9,6 @@ import (
 
 	"github.com/goccy/go-json"
 
-	"discord_gateway/internal/config"
 	"discord_gateway/internal/discord"
 )
 
@@ -41,19 +40,18 @@ func (r *ReviveRecord) FormatCSV() string {
 }
 
 // ExtractRecord unmarshals a raw Discord payload and extracts the Torn-specific
-// fields into a ReviveRecord. Returns nil if the payload cannot be parsed or
-// does not belong to a target channel.
-func ExtractRecord(cfg *config.Config, data []byte) *ReviveRecord {
+// fields into a ReviveRecord. Returns nil if the payload cannot be parsed.
+// Note: It assumes the caller has already validated that the payload originates
+// from a target channel.
+func ExtractRecord(data []byte) *ReviveRecord {
 	var msg discord.MessageCreate
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return nil
 	}
 
-	if !cfg.TargetChannelIDs[msg.ChannelID] {
-		return nil
+	rec := &ReviveRecord{
+		PaymentHistory: "0",
 	}
-
-	rec := &ReviveRecord{}
 
 	for _, embed := range msg.Embeds {
 		if strings.Contains(embed.Title, "Regular") {
@@ -123,8 +121,8 @@ func parseFieldValue(val string) string {
 
 // Log processes the raw Gateway payload, extracts a ReviveRecord, and appends
 // the resulting CSV row to the log file.
-func (l *MessageLogger) Log(cfg *config.Config, data []byte) {
-	rec := ExtractRecord(cfg, data)
+func (l *MessageLogger) Log(data []byte) {
+	rec := ExtractRecord(data)
 	if rec == nil {
 		return
 	}
