@@ -12,6 +12,9 @@ var (
 	// It represents the standard URL prefix for Torn player profiles.
 	tornProfilePrefix = []byte("https://www.torn.com/profiles.php?XID=")
 
+	// tornFactionPrefix is used to extract the faction ID.
+	tornFactionPrefix = []byte("https://www.torn.com/factions.php?step=profile&ID=")
+
 	// tornCountryValue represents the expected minified JSON value for the country field.
 	// Discord Gateway consistently sends minified payloads with this deterministic key ordering.
 	tornCountryValue = []byte(`"value":"Torn","name":"Country"`)
@@ -21,6 +24,10 @@ var (
 	// (e.g. "Regular Revive Request", "Regular Revive Request 🔔", etc.)
 	tornRegularReviveTitle = []byte(`Regular Revive Request`)
 	tornregularReviveTitle = []byte(`regular Revive Request`)
+
+	// tornPremiumReviveTitle is the byte signature for premium revive requests.
+	tornPremiumReviveTitle = []byte(`Premium Revive Request`)
+	tornpremiumReviveTitle = []byte(`premium Revive Request`)
 
 	// tornNoReviveHistory is the byte signature indicating a player has no recent paid revives.
 	tornNoReviveHistory = []byte("No recorded history in the last 90 days")
@@ -41,6 +48,9 @@ func IsTornCountry(data []byte) bool {
 func IsPaidRegularRevive(cfg *config.Config, data []byte) (bool, string) {
 	if !bytes.Contains(data, tornRegularReviveTitle) &&
 		!bytes.Contains(data, tornregularReviveTitle) {
+		if bytes.Contains(data, tornPremiumReviveTitle) || bytes.Contains(data, tornpremiumReviveTitle) {
+			return false, "Premium revive"
+		}
 		return false, "invalid title"
 	}
 	if !cfg.NoHistoryAllowed && bytes.Contains(data, tornNoReviveHistory) {
@@ -84,4 +94,28 @@ func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, data []byte)
 	//   3. Where to send the success callback
 	link := string(data[idx:end]) + "#autorevive=" + strconv.Itoa(cfg.MinAgeDays) + "&cbport=" + strconv.Itoa(callbackPort)
 	return link, xidStr
+}
+
+// ExtractFactionID scans a raw JSON byte slice for a Torn faction profile URL
+// and dynamically extracts the numeric Faction ID.
+//
+// Returns the raw Faction ID as a string, or an empty string if omitted or malformed.
+// Because it slices the original byte array, it maintains zero allocations until the string cast.
+func ExtractFactionID(data []byte) string {
+	idx := bytes.Index(data, tornFactionPrefix)
+	if idx == -1 {
+		return ""
+	}
+
+	end := idx + len(tornFactionPrefix)
+	for end < len(data) && data[end] >= '0' && data[end] <= '9' {
+		end++
+	}
+
+	factionBytes := data[idx+len(tornFactionPrefix) : end]
+	if len(factionBytes) == 0 {
+		return ""
+	}
+
+	return string(factionBytes)
 }

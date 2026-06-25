@@ -6,7 +6,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,10 +18,10 @@ import (
 type Config struct {
 	// Token is the Discord Bot authentication token.
 	Token string
-	
+
 	// TargetChannelIDs is a lookup map of Discord Channel IDs that the application monitors.
 	TargetChannelIDs map[string]bool
-	
+
 	// TargetBytes contains pre-computed byte slices representing the JSON fragments
 	// for the target channels (e.g., []byte(`"channel_id":"123"`)).
 	// This enables zero-allocation string searching on the hot path.
@@ -42,20 +41,26 @@ type Config struct {
 	// DailyQuota is the maximum number of successful revives allowed per day.
 	// Clamped to 1–15. Defaults to 15 if not specified or out of range.
 	DailyQuota int
+
+	// NukeAPIToken is the API token used to authenticate with nuke.family for Contracts/Shitlist.
+	NukeAPIToken string
+
+	// IgnoreFactionShitlist determines if faction shitlist entries should be ignored.
+	IgnoreFactionShitlist bool
 }
 
 // GetUserDir resolves the absolute path to the current user's dedicated configuration
-// directory, specifically enforcing the `/opt/discord_gateway/$USER` structure.
-// This ensures secure, user-isolated configuration loading in multi-tenant environments.
+// directory, specifically using the standard OS configuration directory.
+// This ensures secure, user-isolated configuration loading.
 func GetUserDir() (string, error) {
-	u, err := user.Current()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("failed to determine current user: %w", err)
+		return "", fmt.Errorf("failed to determine user config directory: %w", err)
 	}
-	return filepath.Join("/opt/discord_gateway", u.Username), nil
+	return filepath.Join(configDir, "discord_gateway"), nil
 }
 
-// Load parses the .env file from the user's specific /opt directory.
+// Load parses the .env file from the user's configuration directory.
 // It falls back to standard OS environment variables if the file cannot be parsed.
 // It strictly validates required fields and pre-computes data structures optimized
 // for the zero-allocation hot path.
@@ -123,6 +128,18 @@ func Load() (*Config, error) {
 		dailyQuota = 15
 	}
 
+	// Resolve Nuke API token
+	nukeToken := envMap["NUKE_API_TOKEN"]
+	if nukeToken == "" {
+		nukeToken = os.Getenv("NUKE_API_TOKEN")
+	}
+
+	// Resolve ignore faction shitlist
+	ignoreFactionShitlistStr := envMap["IGNORE_FACTION_SHITLIST"]
+	if ignoreFactionShitlistStr == "" {
+		ignoreFactionShitlistStr = os.Getenv("IGNORE_FACTION_SHITLIST")
+	}
+
 	// Enforce strict validation on required configuration keys.
 	if token == "" {
 		return nil, fmt.Errorf("DISCORD_TOKEN must be set in %s or environment", envPath)
@@ -134,10 +151,12 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Token:            token,
 		TargetChannelIDs: make(map[string]bool),
-		NoHistoryAllowed: strings.ToLower(noHistoryStr) == "true",
-		RateLimit:        rateLimit,
-		MinAgeDays:       minAgeDays,
-		DailyQuota:       dailyQuota,
+		NoHistoryAllowed:      strings.ToLower(noHistoryStr) == "true",
+		RateLimit:             rateLimit,
+		MinAgeDays:            minAgeDays,
+		DailyQuota:            dailyQuota,
+		NukeAPIToken:          nukeToken,
+		IgnoreFactionShitlist: strings.ToLower(ignoreFactionShitlistStr) == "true",
 	}
 
 	// Process the comma-separated channel IDs and compute the hot-path signatures.
@@ -145,7 +164,7 @@ func Load() (*Config, error) {
 		cleanID := strings.TrimSpace(id)
 		if cleanID != "" {
 			cfg.TargetChannelIDs[cleanID] = true
-			
+
 			// Pre-compute the byte string signatures for zero-allocation searching.
 			// By compiling this pattern exactly as it appears in the Discord JSON payload,
 			// the handler can bypass expensive standard library unmarshaling.

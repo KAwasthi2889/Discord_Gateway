@@ -1,10 +1,9 @@
-// Package torn encapsulates the domain-specific business logic for processing Torn events.
-// It handles raw payload extraction, rate limiting, logging, and browser orchestration,
-// ensuring strict adherence to the zero-allocation hot path philosophy.
 package torn
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"os/exec"
 	"time"
 
@@ -28,21 +27,34 @@ func NewBrowserLauncher(cfg *config.Config) *BrowserLauncher {
 	}
 }
 
+var BrowserOverride func(url string)
+
 // Open evaluates the target URL against the active rate limits. If permitted,
 // it dispatches an asynchronous `xdg-open` command to launch the browser in a
 // detached goroutine. Returns true if the browser was launched, false if rate-limited.
-func (b *BrowserLauncher) Open(url string) bool {
+func (b *BrowserLauncher) Open(url string, xid string) bool {
 	if b.limiter.Allow() {
-		// Launch the browser asynchronously to prevent blocking the WebSocket read pump.
-		go func(target string) {
-			cmd := exec.Command("xdg-open", target)
-			if err := cmd.Run(); err != nil {
-				log.Printf("browser_launcher: failed to execute xdg-open for %s: %v", target, err)
-			}
-		}(url)
-		log.Printf("browser_launcher: dispatched xdg-open for %s", url)
+		if BrowserOverride == nil {
+			// Launch the browser asynchronously to prevent blocking the WebSocket read pump.
+			go func(target string) {
+				// Give xdg-open a maximum of 5 seconds to hand off the URL to the browser.
+				// This prevents dangling xdg-open processes from leaking goroutines if the desktop environment hangs it.
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				cmd := exec.CommandContext(ctx, "xdg-open", target)
+				if err := cmd.Run(); err != nil {
+					if ctx.Err() != context.DeadlineExceeded {
+						slog.Error("Failed to execute xdg-open", "target", target, "error", err)
+					}
+				}
+			}(url)
+		} else {
+			BrowserOverride(url)
+		}
+		slog.Debug(fmt.Sprintf("Dispatched xdg-open for %s", xid))
 		return true
 	}
-	log.Printf("browser_launcher: rate limit exceeded, dropped request for %s", url)
+	slog.Warn("Rate limit exceeded, dropped request", "xid", xid)
 	return false
 }

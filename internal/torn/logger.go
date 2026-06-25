@@ -1,8 +1,11 @@
+// Package torn encapsulates the domain-specific business logic for processing Torn events.
+// It handles raw payload extraction, rate limiting, logging, and browser orchestration,
+// ensuring strict adherence to the zero-allocation hot path philosophy.
 package torn
 
 import (
-	"fmt"
-	"log"
+	"encoding/csv"
+	"log/slog"
 	"os"
 	"regexp"
 	"strings"
@@ -26,17 +29,20 @@ type ReviveRecord struct {
 	Country        string
 	Faction        string
 	PaymentHistory string
+	ContractNote   string
 }
 
-// FormatCSV returns the record as a quoted CSV row string (no trailing newline).
-func (r *ReviveRecord) FormatCSV() string {
-	return fmt.Sprintf(`"%s","%s","%s","%s","%s","%s"`,
-		strings.ReplaceAll(r.PlayerName, `"`, `""`),
-		strings.ReplaceAll(r.PlayerID, `"`, `""`),
-		strings.ReplaceAll(r.ReviveType, `"`, `""`),
-		strings.ReplaceAll(r.Country, `"`, `""`),
-		strings.ReplaceAll(r.Faction, `"`, `""`),
-		strings.ReplaceAll(r.PaymentHistory, `"`, `""`))
+// ToCSVRow converts the record into a slice of strings suitable for encoding/csv.
+func (r *ReviveRecord) ToCSVRow() []string {
+	return []string{
+		r.PlayerName,
+		r.PlayerID,
+		r.ReviveType,
+		r.Country,
+		r.Faction,
+		r.PaymentHistory,
+		r.ContractNote,
+	}
 }
 
 // ExtractRecord unmarshals a raw Discord payload and extracts the Torn-specific
@@ -99,12 +105,16 @@ func ExtractRecord(data []byte) *ReviveRecord {
 // remains unblocked.
 type MessageLogger struct {
 	file *os.File
+	csv  *csv.Writer
 }
 
 // NewMessageLogger constructs a MessageLogger bound to the provided file descriptor.
 // The file descriptor is expected to be opened in append mode.
 func NewMessageLogger(file *os.File) *MessageLogger {
-	return &MessageLogger{file: file}
+	return &MessageLogger{
+		file: file,
+		csv:  csv.NewWriter(file),
+	}
 }
 
 // parseFieldValue is an internal helper that sanitizes Discord markdown links.
@@ -121,13 +131,20 @@ func parseFieldValue(val string) string {
 
 // Log processes the raw Gateway payload, extracts a ReviveRecord, and appends
 // the resulting CSV row to the log file.
-func (l *MessageLogger) Log(data []byte) {
+func (l *MessageLogger) Log(data []byte, contractNote string) {
 	rec := ExtractRecord(data)
 	if rec == nil {
 		return
 	}
+	rec.ContractNote = contractNote
 
-	if _, err := l.file.WriteString(rec.FormatCSV() + "\n"); err != nil {
-		log.Printf("message_logger: failed to append to csv: %v", err)
+	if err := l.csv.Write(rec.ToCSVRow()); err != nil {
+		slog.Error("Failed to write CSV record", "error", err)
+		return
+	}
+	l.csv.Flush()
+
+	if err := l.csv.Error(); err != nil {
+		slog.Error("Failed to flush CSV writer", "error", err)
 	}
 }

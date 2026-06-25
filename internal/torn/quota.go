@@ -2,7 +2,7 @@ package torn
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -28,6 +28,10 @@ type DailyQuota struct {
 	used     int
 	date     string // "2006-01-02" format
 	filePath string
+
+	// OnExhausted is called when the daily quota is reached.
+	// Defaults to sending os.Interrupt to the current process.
+	OnExhausted func()
 }
 
 // NewDailyQuota creates a DailyQuota with the given limit and persistence directory.
@@ -37,13 +41,18 @@ func NewDailyQuota(limit int, dir string) *DailyQuota {
 		limit:    limit,
 		filePath: filepath.Join(dir, "quota.json"),
 		date:     today(),
+		OnExhausted: func() {
+			slog.Warn("Quota exhausted — shutting down")
+			if p, err := os.FindProcess(os.Getpid()); err == nil {
+				_ = p.Signal(os.Interrupt)
+			}
+		},
 	}
 
 	// Attempt to restore state from disk.
 	dq.loadFromDisk()
 
-	log.Printf("daily_quota: initialized (limit=%d, used=%d, remaining=%d)",
-		dq.limit, dq.used, dq.limit-dq.used)
+	slog.Info("Daily quota loaded from disk", "limit", dq.limit, "used", dq.used, "remaining", dq.limit-dq.used)
 
 	return dq
 }
@@ -69,10 +78,12 @@ func (dq *DailyQuota) RecordSuccess() {
 	dq.used++
 	remaining := dq.limit - dq.used
 
-	log.Printf("daily_quota: revive recorded (%d/%d used, %d remaining)", dq.used, dq.limit, remaining)
+	slog.Info("Revive recorded", "used", dq.used, "limit", dq.limit, "remaining", remaining)
 
 	if remaining <= 0 {
-		log.Println("daily_quota: ⚠ quota exhausted — no more revives will be opened today")
+		if dq.OnExhausted != nil {
+			dq.OnExhausted()
+		}
 	}
 
 	dq.saveToDisk()
@@ -98,7 +109,7 @@ func (dq *DailyQuota) UpdateLimit(newLimit int) {
 	defer dq.mu.Unlock()
 
 	if newLimit != dq.limit {
-		log.Printf("daily_quota: limit updated %d → %d", dq.limit, newLimit)
+		slog.Info("Quota limit updated", "old", dq.limit, "new", newLimit)
 		dq.limit = newLimit
 	}
 }
@@ -108,7 +119,7 @@ func (dq *DailyQuota) UpdateLimit(newLimit int) {
 func (dq *DailyQuota) rolloverIfNeeded() {
 	t := today()
 	if t != dq.date {
-		log.Printf("daily_quota: new day detected (%s → %s), resetting counter", dq.date, t)
+		slog.Info("New day detected, resetting quota counter", "old_date", dq.date, "new_date", t)
 		dq.used = 0
 		dq.date = t
 		dq.saveToDisk()
@@ -125,7 +136,7 @@ func (dq *DailyQuota) loadFromDisk() {
 
 	var state quotaState
 	if err := json.Unmarshal(data, &state); err != nil {
-		log.Printf("daily_quota: corrupt quota.json, starting fresh: %v", err)
+		slog.Warn("Corrupt quota.json, starting fresh", "error", err)
 		return
 	}
 
@@ -145,12 +156,19 @@ func (dq *DailyQuota) saveToDisk() {
 
 	data, err := json.Marshal(state)
 	if err != nil {
-		log.Printf("daily_quota: failed to marshal state: %v", err)
+		slog.Error("Failed to marshal quota state", "error", err)
 		return
 	}
 
-	if err := os.WriteFile(dq.filePath, data, 0600); err != nil {
-		log.Printf("daily_quota: failed to write quota.json: %v", err)
+	tmpPath := dq.filePath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		slog.Error("Failed to write temp quota.json", "error", err)
+		return
+	}
+
+	if err := os.Rename(tmpPath, dq.filePath); err != nil {
+		slog.Error("Failed to atomically rename quota.json", "error", err)
+		os.Remove(tmpPath) // Cleanup on failure
 	}
 }
 

@@ -27,7 +27,7 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 
 // Allow evaluates the current timestamp against the rolling window constraint.
 // It aggressively purges expired execution timestamps from its internal state.
-// 
+//
 // Returns true and records a new execution if the operation is permitted.
 // Returns false if the maximum limit has been reached within the current window.
 func (r *RateLimiter) Allow() bool {
@@ -35,10 +35,10 @@ func (r *RateLimiter) Allow() bool {
 	defer r.mu.Unlock()
 
 	now := time.Now()
-	
+
 	// Re-slice without allocating new backing memory where possible.
 	valid := r.times[:0]
-	
+
 	for _, t := range r.times {
 		if now.Sub(t) < r.window {
 			valid = append(valid, t)
@@ -50,7 +50,7 @@ func (r *RateLimiter) Allow() bool {
 	if len(r.times) >= r.limit {
 		return false
 	}
-	
+
 	r.times = append(r.times, now)
 	return true
 }

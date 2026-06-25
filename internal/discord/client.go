@@ -7,8 +7,9 @@ package discord
 import (
 	"context"
 	"fmt"
-	"log"
-	"math/rand"
+	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -31,36 +32,41 @@ type MessageCreateHandler func(data []byte)
 type Client struct {
 	// cfg holds a pointer to the current *config.Config.
 	// It is accessed via atomic.Value to allow lock-free, zero-downtime hot reloading.
-	cfg     atomic.Value 
+	cfg atomic.Value
 
 	conn *websocket.Conn
 	mu   sync.Mutex // Protects concurrent writes to the underlying websocket connection.
 
 	sessionID        string
 	resumeGatewayURL string
-	
+
 	// lastSequence tracks the highest sequence number received from Discord.
 	// Used for session resumption if the connection drops.
-	lastSequence     int32
-	
-	// ackReceived is an atomic flag indicating whether the last heartbeat was acknowledged.
-	// 1 = ACK received, 0 = Pending/Unacknowledged. Used to detect zombie TCP connections.
-	ackReceived      int32 
+	lastSequence atomic.Int32
 
-	// connectedOnce is set to 1 after a successful Gateway handshake (READY/RESUMED).
-	// Reset to 0 at the start of each connection attempt. Used to distinguish
+	// ackReceived is an atomic flag indicating whether the last heartbeat was acknowledged.
+	// true = ACK received, false = Pending/Unacknowledged. Used to detect zombie TCP connections.
+	ackReceived atomic.Bool
+
+	// connectedOnce is set to true after a successful Gateway handshake (READY/RESUMED).
+	// Reset to false at the start of each connection attempt. Used to distinguish
 	// "never connected" failures from "was connected, then dropped" failures.
-	connectedOnce    int32
+	connectedOnce atomic.Bool
 
 	// onMessageCreate maintains a registry of callback functions executed synchronously
 	// on the read pump when a MESSAGE_CREATE event arrives.
-	onMessageCreate []MessageCreateHandler 
+	onMessageCreate []MessageCreateHandler
+
+	// multiplexer handles distributing events to secondary replicas if running as Primary.
+	multiplexer *Multiplexer
 }
 
 // NewClient initializes and returns a new Discord Gateway Client.
 // It safely stores the initial configuration. Calling Run() is required to establish the connection.
 func NewClient(cfg *config.Config) *Client {
-	c := &Client{}
+	c := &Client{
+		multiplexer: NewMultiplexer(),
+	}
 	c.cfg.Store(cfg)
 	return c
 }
@@ -95,26 +101,61 @@ func (c *Client) Run(ctx context.Context) error {
 	consecutiveFailures := 0
 
 	for {
-		atomic.StoreInt32(&c.connectedOnce, 0)
-		err := c.connectAndListen(ctx)
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		// 1. Attempt to act as Replica
+		replicaConn, err := net.Dial("tcp", "127.0.0.1:44188")
+		if err == nil {
+			slog.Debug("Multiplex: Connected to existing primary. Acting as Replica.")
+			err = RunAsReplica(ctx, replicaConn, c.onMessageCreate)
+			slog.Warn("Multiplex Replica disconnected", "error", err)
+			time.Sleep(1 * time.Second) // Prevent tight loops
+			continue
+		}
+
+		// 2. Attempt to act as Primary
+		listener, err := net.Listen("tcp", "127.0.0.1:44188")
+		if err != nil {
+			slog.Warn("Multiplex: Failed to bind or connect. Retrying", "error", err)
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		slog.Debug("Multiplex: Bound to 127.0.0.1:44188. Acting as Primary.")
+		go c.multiplexer.ServeReplicas(ctx, listener)
+
+		c.connectedOnce.Store(false)
+		err = c.connectAndListen(ctx)
+
+		// Tear down primary state
+		listener.Close()
+		c.multiplexer.CloseAll()
+
 		if err == nil || ctx.Err() != nil {
 			return nil
 		}
 
 		// Only count failures where we never established a connection.
 		// If we were connected and then dropped, reset the counter.
-		if atomic.LoadInt32(&c.connectedOnce) == 1 {
+		if c.connectedOnce.Load() {
 			consecutiveFailures = 0
 		} else {
 			consecutiveFailures++
 		}
-		log.Printf("Gateway disconnected: %v", err)
+
+		if err == io.EOF {
+			slog.Info("Graceful Gateway disconnection")
+		} else {
+			slog.Warn("Gateway disconnected", "error", err)
+		}
 
 		if consecutiveFailures >= maxConsecutiveRetries {
 			return fmt.Errorf("exceeded %d consecutive connection failures, last error: %v", maxConsecutiveRetries, err)
 		}
 
-		log.Printf("Reconnecting in 5 seconds... (attempt %d/%d)", consecutiveFailures, maxConsecutiveRetries)
+		slog.Info("Reconnecting...", "seconds", 5, "attempt", consecutiveFailures, "max", maxConsecutiveRetries)
 
 		select {
 		case <-time.After(5 * time.Second):
@@ -133,9 +174,9 @@ func (c *Client) connectAndListen(ctx context.Context) error {
 		}
 		url = gw
 	}
-	
+
 	dialURL := fmt.Sprintf("%s?v=%s&encoding=json", url, APIVersion)
-	log.Printf("Connecting to %s", dialURL)
+	slog.Debug("Connecting to Gateway", "url", dialURL)
 
 	conn, _, err := websocket.DefaultDialer.Dial(dialURL, nil)
 	if err != nil {
@@ -156,7 +197,7 @@ func (c *Client) connectAndListen(ctx context.Context) error {
 	}()
 
 	// Initialize the ACK flag for the new connection so the first heartbeat isn't falsely marked as zombie
-	atomic.StoreInt32(&c.ackReceived, 1)
+	c.ackReceived.Store(true)
 
 	hbCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -178,154 +219,7 @@ func (c *Client) connectAndListen(ctx context.Context) error {
 	}
 }
 
-func (c *Client) readPump(ctx context.Context, done chan<- error) {
-	for {
-		_, rawMsg, err := c.conn.ReadMessage()
-		if err != nil {
-			done <- fmt.Errorf("read error: %w", err)
-			return
-		}
 
-		var payload Payload
-		if err := json.Unmarshal(rawMsg, &payload); err != nil {
-			done <- fmt.Errorf("unmarshal payload: %w", err)
-			return
-		}
-
-		if payload.Sequence != nil {
-			atomic.StoreInt32(&c.lastSequence, *payload.Sequence)
-		}
-
-		if err := c.handlePayload(ctx, payload); err != nil {
-			done <- err
-			return
-		}
-	}
-}
-
-func (c *Client) handlePayload(ctx context.Context, p Payload) error {
-	switch p.Op {
-	case 10: // Hello
-		var hello Hello
-		if err := json.Unmarshal(p.Data, &hello); err != nil {
-			return fmt.Errorf("parse hello: %w", err)
-		}
-
-		log.Printf("Received Hello. Heartbeat interval: %dms", hello.HeartbeatInterval)
-		go c.heartbeat(ctx, hello.HeartbeatInterval)
-
-		if c.sessionID != "" {
-			return c.resume()
-		}
-		return c.identify()
-
-	case 0: // Dispatch
-		if p.Event == nil {
-			return nil
-		}
-		switch *p.Event {
-		case "READY":
-			var ready Ready
-			if err := json.Unmarshal(p.Data, &ready); err == nil {
-				c.sessionID = ready.SessionID
-				c.resumeGatewayURL = ready.ResumeGatewayURL
-				atomic.StoreInt32(&c.connectedOnce, 1)
-				log.Println("Gateway connection is READY")
-			}
-		case "RESUMED":
-			atomic.StoreInt32(&c.connectedOnce, 1)
-			log.Println("Gateway connection successfully RESUMED")
-		case "MESSAGE_CREATE":
-			// Dispatch to all registered handlers
-			for _, handler := range c.onMessageCreate {
-				handler(p.Data)
-			}
-		}
-
-	case 7: // Reconnect
-		return fmt.Errorf("server requested reconnect")
-
-	case 9: // Invalid Session
-		log.Println("Invalid Session received. Clearing cache to force full re-identify.")
-		c.sessionID = ""
-		c.resumeGatewayURL = ""
-		return fmt.Errorf("invalid session")
-
-	case 11: // Heartbeat ACK
-		atomic.StoreInt32(&c.ackReceived, 1)
-	}
-
-	return nil
-}
-
-func (c *Client) identify() error {
-	id := Identify{
-		Token:   c.Config().Token,
-		Intents: Intents,
-	}
-	id.Properties.OS = "linux"
-	id.Properties.Browser = "GoClient"
-	id.Properties.Device = "GoClient"
-
-	log.Println("Identify sent")
-	return c.writeJSON(Payload{Op: 2, Data: toJSON(id)})
-}
-
-func (c *Client) resume() error {
-	res := Resume{
-		Token:     c.Config().Token,
-		SessionID: c.sessionID,
-		Seq:       atomic.LoadInt32(&c.lastSequence),
-	}
-
-	log.Println("Resume sent")
-	return c.writeJSON(Payload{Op: 6, Data: toJSON(res)})
-}
-
-func (c *Client) heartbeat(ctx context.Context, interval int) {
-	jitter := time.Duration(float64(interval)*rand.Float64()) * time.Millisecond
-	select {
-	case <-time.After(jitter):
-	case <-ctx.Done():
-		return
-	}
-
-	c.sendHeartbeat()
-
-	ticker := time.NewTicker(time.Duration(interval) * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			if atomic.LoadInt32(&c.ackReceived) == 0 {
-				log.Println("Zombie connection detected, forcing reconnect")
-				c.mu.Lock()
-				if c.conn != nil {
-					c.conn.Close() // Force read loop to error out and trigger reconnect
-				}
-				c.mu.Unlock()
-				return
-			}
-			c.sendHeartbeat()
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (c *Client) sendHeartbeat() {
-	atomic.StoreInt32(&c.ackReceived, 0)
-	seq := atomic.LoadInt32(&c.lastSequence)
-	var seqVal interface{}
-	if seq > 0 {
-		seqVal = seq
-	}
-
-	if err := c.writeJSON(Payload{Op: 1, Data: toJSON(seqVal)}); err != nil {
-		log.Printf("Failed to send heartbeat: %v", err)
-	}
-}
 
 func (c *Client) writeJSON(v interface{}) error {
 	b, err := json.Marshal(v)
@@ -338,6 +232,7 @@ func (c *Client) writeJSON(v interface{}) error {
 	if c.conn == nil {
 		return fmt.Errorf("connection closed")
 	}
+	c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return c.conn.WriteMessage(websocket.TextMessage, b)
 }
 

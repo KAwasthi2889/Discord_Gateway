@@ -1,20 +1,21 @@
-# Discord Gateway - Torn Integration
+# Discord Gateway - Fast Revive Integration
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=for-the-badge&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-A highly optimized, zero-allocation Discord Gateway client designed specifically to process Torn-related Webhook events with absolute minimal latency.
+A highly optimized, zero-allocation Discord Gateway client designed specifically to process Torn-related Webhook events (specifically Revive requests) with absolute minimal latency. It seamlessly integrates a Go backend with a local userscript to automate rapid responses to faction contracts.
 
 ## 🚀 Features
 
-- **Zero-Allocation Parsing:** Utilizes direct byte-scanning signatures rather than expensive JSON reflection for sub-millisecond payload processing.
-- **Dynamic Configuration:** Live configuration reloading via `fsnotify`, enabling token and channel changes without restarting the application.
-- **Robust Rate Limiting:** A sliding-window, mutex-backed rate limiter protects the host OS from being overwhelmed by child process spawns (`xdg-open`).
-- **Concurrent Logging:** Supports simultaneous plaintext debugging and CSV record keeping for analytics.
+- **Zero-Allocation Parsing:** Utilizes direct byte-scanning signatures rather than expensive JSON reflection for sub-millisecond Discord payload processing.
+- **Dynamic Configuration:** Live configuration reloading via `fsnotify`, enabling token and quota changes without restarting the application.
+- **Nuke API Integration:** Periodically fetches and caches Faction Contracts, Player Packages, and Shitlists to enforce rule-based reviving.
+- **E2E Mock Testing Suite:** Built-in simulated HTTP endpoints to rigorously test Chromedp behavior without spending real in-game energy.
+- **Event-Driven Userscript:** A heavily optimized Tampermonkey script (`fast_revive.user.js`) that leverages browser `MutationObserver` hooks to instantly confirm revive dialogs.
 
 ## 🏗️ Architecture
 
-This project strictly adheres to the Single Responsibility Principle, modularized into distinct, decoupled components. 
+This project strictly adheres to the Single Responsibility Principle, modularized into distinct, decoupled components.
 
 ```mermaid
 flowchart TD
@@ -22,61 +23,66 @@ flowchart TD
         WSS[Discord WebSocket WSS]
     end
 
-    subgraph "cmd/gateway"
+    subgraph "Go: discord_gateway"
         App[Gateway Entry Point]
-    end
-
-    subgraph "internal/config"
-        Config[Configuration Manager]
-        FSN[fsnotify Watcher]
-    end
-
-    subgraph "internal/discord"
+        Config[Configuration Manager & fsnotify]
+        Nuke[Nuke API Cache]
         Client[Discord WSS Client]
-        Models[Payload Models]
+        
+        Handler[Torn Event Handler]
+        RateLimit[Sliding Window Quota]
+        Browser[Chromedp Headless Launcher]
+        Callback[Local HTTP Callback Server]
     end
 
-    subgraph "internal/torn"
-        Handler[Torn Event Handler]
-        Extractor[Zero-Alloc Extractor]
-        RateLimit[Sliding Window Limiter]
-        Browser[Browser Launcher]
-        Logger[CSV / Plaintext Logger]
+    subgraph "Browser: fast_revive.user.js"
+        Observer[DOM MutationObserver]
+        Engine[Auto-Confirm Engine]
     end
 
     WSS <--> Client
     App --> Client
     App --> Config
-    Config --> FSN
-    FSN -. Reloads .-> Config
+    App --> Nuke
     
     Client -- "Raw Byte Payloads" --> Handler
-    Handler --> Extractor
-    Extractor -- "Extracted URL" --> RateLimit
+    Handler -- "Validate Contract/Shitlist" --> Nuke
+    Handler -- "Check Daily Limits" --> RateLimit
     RateLimit -- "Allowed" --> Browser
-    Handler --> Logger
+    
+    Browser -- "profiles.php?XID=123#autorevive" --> Observer
+    Observer -- "Targeted Dialog Parsing" --> Engine
+    Engine -- "HTTP GET /revive?status=success" --> Callback
+    Callback -- "Update Quota & Log" --> Handler
 ```
 
 ### The Hot Path
-When a `MESSAGE_CREATE` event is pushed over the websocket, the payload is routed directly to the `torn.Handler`. Rather than unmarshaling the entire JSON payload using standard library reflection, the hot path (`internal/torn/extractor.go`) performs direct byte-scanning (`bytes.Contains` and `bytes.Index`) against pre-computed byte signatures. 
+When a `MESSAGE_CREATE` event is pushed over the websocket, the payload is routed directly to the `torn.Handler`. Rather than unmarshaling the entire JSON payload using standard library reflection, the hot path performs direct byte-scanning (`bytes.Contains` and `bytes.Index`) against pre-computed signatures.
 
-This technique allows the application to detect the target channel, identify the target country, and extract the required URL with zero heap allocations, avoiding garbage collection pauses entirely.
+If the payload is valid and passes Nuke API contract verification, the system instructs `chromedp` to launch a headless browser pointing directly to the target's profile.
+
+### The Userscript Execution
+The local Tampermonkey script (`fast_revive.user.js`) detects the `#autorevive` URL hash and immediately scopes a `MutationObserver` directly to the `#profileroot`. It waits exactly for the confirmation dialog, bypasses all global `document.body` scanning overhead, verifies the % chance, and auto-clicks "Yes". Finally, it pings the local Go Callback Server to track the success.
 
 ## 🛠️ Prerequisites
 
 - **Go 1.22+** installed on your system.
-- A Linux-based OS (utilizes `xdg-open` for browser launching).
-- A Discord Bot Token with the necessary intents.
+- A local browser installation (e.g., Google Chrome or Chromium) for Chromedp.
+- A Discord Bot Token with message content intents.
+- A Tampermonkey extension with `fast_revive.user.js` installed.
 
 ## ⚙️ Setup & Configuration
 
-The application relies on a user-specific `.env` file located in `/opt/discord_gateway/$USER/.env`. 
+The application relies on a user-specific `.env` file located in `~/.config/discord_gateway/.env`. 
 
 Example `.env` structure:
 ```env
 DISCORD_TOKEN=your_bot_token_here
 TARGET_CHANNELS=1234567890,0987654321
-TARGET_COUNTRIES=Switzerland,Japan,Argentina
+NUKE_API_TOKEN=your_nuke_api_token
+DAILY_QUOTA=150
+MIN_AGE_DAYS=14
+IGNORE_FACTION_SHITLIST=true
 ```
 
 ## 🚀 Execution
@@ -84,13 +90,16 @@ TARGET_COUNTRIES=Switzerland,Japan,Argentina
 ```bash
 # Build the applications
 go build ./cmd/gateway
-go build ./cmd/inspector
+go build ./cmd/mock_torn
 
 # Run the primary gateway client
 ./gateway
+```
 
-# Run the inspector (for debugging raw JSON payloads)
-./inspector
+### Testing (E2E)
+You can run the end-to-end test suite which stands up the `mock_torn` server and fires payload bytes directly into the pipeline:
+```bash
+go test ./internal/e2e -v
 ```
 
 ## 🤝 Contributing

@@ -1,1 +1,0 @@
-/home/ever/Code/Projects/Public-Scripts/JsScripts/FastRevive/fast_revive.user.js

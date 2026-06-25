@@ -16,15 +16,15 @@ const Intents = (1 << 9) | (1 << 15)
 type Payload struct {
 	// Op is the opcode indicating the nature of the payload (e.g., 0 for Dispatch, 10 for Hello).
 	Op int `json:"op"`
-	
+
 	// Data contains the event payload. Deferred parsing via json.RawMessage
 	// allows us to selectively unmarshal based on the Op or Event type.
 	Data json.RawMessage `json:"d"`
-	
+
 	// Sequence is the sequence number, used for resuming sessions and heartbeating.
 	// It is only present on Opcode 0 (Dispatch) events.
 	Sequence *int32 `json:"s"`
-	
+
 	// Event is the event name for Opcode 0 (e.g., "MESSAGE_CREATE").
 	Event *string `json:"t"`
 }

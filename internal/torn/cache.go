@@ -1,14 +1,15 @@
 package torn
 
 import (
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
 
 type cachedPayload struct {
-	data      []byte
-	timestamp time.Time
+	data         []byte
+	contractNote string
+	timestamp    time.Time
 }
 
 // PayloadCache temporarily holds Discord event payloads while waiting for the
@@ -34,25 +35,26 @@ func NewPayloadCache(timeout time.Duration) *PayloadCache {
 }
 
 // Add stores a copy of the payload for the given XID.
-func (pc *PayloadCache) Add(xid string, payload []byte) {
+func (pc *PayloadCache) Add(xid string, payload []byte, contractNote string) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 	pc.items[xid] = cachedPayload{
-		data:      payload,
-		timestamp: time.Now(),
+		data:         payload,
+		contractNote: contractNote,
+		timestamp:    time.Now(),
 	}
 }
 
 // Pop retrieves and removes the payload for the given XID.
-// Returns the payload and a boolean indicating if it was found.
-func (pc *PayloadCache) Pop(xid string) ([]byte, bool) {
+// Returns the payload, the contract note, and a boolean indicating if it was found.
+func (pc *PayloadCache) Pop(xid string) ([]byte, string, bool) {
 	pc.mu.Lock()
 	defer pc.mu.Unlock()
 	if item, exists := pc.items[xid]; exists {
 		delete(pc.items, xid)
-		return item.data, true
+		return item.data, item.contractNote, true
 	}
-	return nil, false
+	return nil, "", false
 }
 
 // cleanupRoutine runs periodically to evict payloads that have exceeded the timeout.
@@ -67,7 +69,7 @@ func (pc *PayloadCache) cleanupRoutine() {
 				delete(pc.items, xid)
 				// We don't hold the lock while logging, but since we're just
 				// printing strings, it's safe to do this here.
-				log.Printf("Timeout / No response from browser for XID=%s, flushing it", xid)
+				slog.Warn("Timeout / No response from browser for XID, flushing it", "xid", xid)
 			}
 		}
 		pc.mu.Unlock()

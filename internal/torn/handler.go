@@ -2,11 +2,13 @@ package torn
 
 import (
 	"bytes"
-	"log"
+	"log/slog"
 	"os"
+	"strconv"
 	"time"
 
 	"discord_gateway/internal/config"
+	"discord_gateway/internal/nuke"
 )
 
 // Handler serves as the primary orchestrator for the Torn integration business logic.
@@ -28,6 +30,9 @@ type Handler struct {
 	// cache holds Discord payloads temporarily until the JS callback confirms success/failure.
 	cache *PayloadCache
 
+	// nukeClient provides fast access to the cached Nuke API Shitlist and Contracts.
+	nukeClient *nuke.Client
+
 	// callbackPort is the random OS-assigned port for the JS → Go success callback.
 	callbackPort int
 }
@@ -35,15 +40,15 @@ type Handler struct {
 // NewHandler initializes and returns a new Torn orchestrator.
 // It wires up the necessary sub-components, such as the rate limiter, the CSV logger,
 // the daily quota system, and the HTTP callback server.
-func NewHandler(cfg *config.Config, logFile *os.File, userDir string) *Handler {
+func NewHandler(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client) *Handler {
 	quota := NewDailyQuota(cfg.DailyQuota, userDir)
 	logger := NewMessageLogger(logFile)
 	cache := NewPayloadCache(40 * time.Second)
 
-	cbPort, err := StartCallbackServer(quota, cache, logger)
+	cbPort, err := StartCallbackServer(quota, cache, logger, nil)
 	if err != nil {
-		log.Printf("handler: WARNING — callback server failed to start: %v", err)
-		log.Println("handler: daily quota will still gate browser launches, but success tracking is disabled")
+		slog.Warn("Callback server failed to start", "error", err)
+		slog.Info("Daily quota will still gate browser launches, but success tracking is disabled")
 	}
 
 	return &Handler{
@@ -52,7 +57,22 @@ func NewHandler(cfg *config.Config, logFile *os.File, userDir string) *Handler {
 		logger:       logger,
 		quota:        quota,
 		cache:        cache,
+		nukeClient:   nukeClient,
 		callbackPort: cbPort,
+	}
+}
+
+// NewHandlerForTest allows test injection of mocked or explicitly configured dependencies
+// without automatically spawning side-effect goroutines like StartCallbackServer.
+func NewHandlerForTest(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client, quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, callbackPort int) *Handler {
+	return &Handler{
+		cfg:          cfg,
+		browser:      NewBrowserLauncher(cfg),
+		logger:       logger,
+		quota:        quota,
+		cache:        cache,
+		nukeClient:   nukeClient,
+		callbackPort: callbackPort,
 	}
 }
 
@@ -102,29 +122,32 @@ func (h *Handler) OnMessageCreate(data []byte) {
 	if isCountry && ok {
 		// Stage 2.5: Daily quota gate — reject early if today's ceiling is hit.
 		if !h.quota.Allow() {
-			payloadCopy := make([]byte, len(data))
-			copy(payloadCopy, data)
-			go func(payload []byte) {
-				log.Println("A new request arrived but rejected due to daily quota")
-				if rec := ExtractRecord(payload); rec != nil {
-					log.Printf("  → %s", rec.FormatCSV())
-				}
-			}(payloadCopy)
+			h.handleRejection("quota", data)
 			return
 		}
 
 		if link, xid := ExtractProfileLinkAndXID(h.cfg, h.callbackPort, data); link != "" {
-			if h.browser.Open(link) {
+			// Extract IDs for Nuke API checks
+			xidInt, _ := strconv.Atoi(xid)
+			factionIDInt, _ := strconv.Atoi(ExtractFactionID(data))
+
+			if h.checkShitlist(xidInt, factionIDInt, xid) {
+				return
+			}
+
+			link, contractNote := h.buildContractUrl(link, xidInt, factionIDInt)
+
+			if h.browser.Open(link, xid) {
 				// Stage 4: Cache payload and wait for callback (Deferred Allocation)
 				// Copy the payload to avoid a data race with the websocket read buffer.
 				logCopy := make([]byte, len(data))
 				copy(logCopy, data)
-				h.cache.Add(xid, logCopy)
+				h.cache.Add(xid, logCopy, contractNote)
 			} else {
-				log.Println("A new request arrived but rejected due to rate limit")
+				slog.Info("Request rejected due to rate limit")
 			}
 		} else {
-			log.Println("handler: malformed url extraction rejected")
+			slog.Warn("Malformed url extraction rejected")
 		}
 	} else {
 		// Determine rejection reason
@@ -134,23 +157,53 @@ func (h *Handler) OnMessageCreate(data []byte) {
 		} else if !ok {
 			reason = rejectReason
 		}
-
-		// Log asynchronously to prevent the heavy json.Unmarshal in ExtractRecord
-		// from blocking the WebSocket read pump on rapid rejected events.
-		//
-		// CRITICAL FIX: The underlying websocket read buffer might be overwritten by
-		// the next incoming message. We MUST create a copy of the payload slice
-		// before passing it to the asynchronous goroutine.
-		payloadCopy := make([]byte, len(data))
-		copy(payloadCopy, data)
-
-		go func(r string, payload []byte) {
-			log.Printf("A new request arrived but rejected due to %s", r)
-			if rec := ExtractRecord(payload); rec != nil {
-				log.Printf("  → %s", rec.FormatCSV())
-			}
-		}(reason, payloadCopy)
+		h.handleRejection(reason, data)
 	}
+}
+
+func (h *Handler) checkShitlist(xidInt, factionIDInt int, xid string) bool {
+	if h.nukeClient != nil {
+		if isShitlisted, slType := h.nukeClient.IsShitlisted(xidInt, factionIDInt); isShitlisted {
+			if slType == "faction" && h.cfg.IgnoreFactionShitlist {
+				slog.Info("Ignoring faction shitlist", "xid", xid, "factionID", factionIDInt)
+			} else {
+				slog.Info("Request dropped silently", "reason", "on shitlist", "type", slType, "xid", xid)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (h *Handler) buildContractUrl(link string, xidInt, factionIDInt int) (string, string) {
+	contractNote := ""
+	if h.nukeClient != nil {
+		if contract, ok := h.nukeClient.GetContract(xidInt, factionIDInt); ok {
+			link += "&minChance=" + strconv.Itoa(contract.MinReviveChance)
+			link += "&status=" + contract.PStatus
+			contractNote = contract.Note
+		}
+	}
+	return link, contractNote
+}
+
+func (h *Handler) handleRejection(reason string, data []byte) {
+	// Log asynchronously to prevent the heavy json.Unmarshal in ExtractRecord
+	// from blocking the WebSocket read pump on rapid rejected events.
+	//
+	// CRITICAL FIX: The underlying websocket read buffer might be overwritten by
+	// the next incoming message. We MUST create a copy of the payload slice
+	// before passing it to the asynchronous goroutine.
+	payloadCopy := make([]byte, len(data))
+	copy(payloadCopy, data)
+
+	go func(r string, payload []byte) {
+		slog.Info("Request rejected", "reason", r)
+		if rec := ExtractRecord(payload); rec != nil {
+			// Dereference the pointer (*rec) so slog prints {PlayerName...} instead of &{PlayerName...}
+			slog.Debug("Rejected payload details", "record:", *rec)
+		}
+	}(reason, payloadCopy)
 }
 
 // isTargetChannel evaluates the raw payload against the pre-computed channel signatures.

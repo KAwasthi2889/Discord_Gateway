@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -21,16 +21,24 @@ import (
 )
 
 func main() {
+	// Setup standard structured logging to stderr.
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	slog.SetDefault(logger)
+
 	// Retrieve the shared user directory to locate the .env configuration file.
 	userDir, err := config.GetUserDir()
 	if err != nil {
-		log.Fatalf("Failed to retrieve user directory: %v", err)
+		slog.Error("Failed to retrieve user directory", "error", err)
+		os.Exit(1)
 	}
 
 	// Load the shared configuration settings, ensuring consistency with the main gateway.
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Configuration error: %v", err)
+		slog.Error("Configuration error", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize a rotating dump file for raw JSON message payloads.
@@ -38,7 +46,8 @@ func main() {
 	dumpPath := filepath.Join(userDir, "raw_message.txt")
 	dumpFile, err := logutil.NewRotatingFile(dumpPath, 10*1024*1024)
 	if err != nil {
-		log.Fatalf("Failed to open dump file %s: %v", dumpPath, err)
+		slog.Error("Failed to open dump file", "path", dumpPath, "error", err)
+		os.Exit(1)
 	}
 	defer dumpFile.Close()
 
@@ -74,21 +83,22 @@ func main() {
 		)
 
 		// Print a concise notification to standard output to indicate arrival without cluttering the terminal.
-		fmt.Println("A new message has arrived...")
+		slog.Info("A new message has arrived...")
 
 		// Persist the full raw payload to the rotating dump file for deeper analysis.
 		if _, err := dumpFile.Write([]byte(output)); err != nil {
-			log.Printf("Failed to write payload to raw dump file: %v", err)
+			slog.Error("Failed to write payload to raw dump file", "error", err)
 		}
 	})
 
-	log.Println("Starting Discord Inspector utility...")
-	log.Printf("Raw JSON payloads will be saved to: %s", dumpPath)
+	slog.Info("Starting Discord Inspector utility")
+	slog.Info("Raw JSON payloads will be saved to", "path", dumpPath)
 
 	// Block and maintain the WebSocket connection until the application is terminated.
 	if err := client.Run(ctx); err != nil {
-		log.Fatalf("Client terminated abnormally: %v", err)
+		slog.Error("Client terminated abnormally", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Inspector shutdown complete.")
+	slog.Info("Inspector shutdown complete.")
 }
