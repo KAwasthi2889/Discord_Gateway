@@ -1,1 +1,1 @@
-/home/ever/Code/Learning/Javascript/Web Scripts/Fast Revive/fast_revive.js
+/home/ever/Code/Projects/Public-Scripts/JsScripts/FastRevive/fast_revive.user.js
