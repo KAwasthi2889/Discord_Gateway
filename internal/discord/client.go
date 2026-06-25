@@ -219,8 +219,6 @@ func (c *Client) connectAndListen(ctx context.Context) error {
 	}
 }
 
-
-
 func (c *Client) writeJSON(v interface{}) error {
 	b, err := json.Marshal(v)
 	if err != nil {

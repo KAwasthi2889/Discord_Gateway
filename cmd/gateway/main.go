@@ -6,11 +6,14 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"discord_gateway/internal/config"
 	"discord_gateway/internal/discord"
@@ -79,6 +82,30 @@ func main() {
 
 	// Initialize the domain-specific logic handler for Torn events.
 	tornHandler := torn.NewHandler(cfg, logFile, userDir, nukeClient)
+
+	// Immediately check quota on startup
+	if !tornHandler.Quota().Allow() {
+		slog.Error("Daily quota limit already reached on startup! Exiting gracefully.")
+		os.Exit(0)
+	}
+
+	// Startup verification: ping userscript to ensure it is active.
+	cbPort := tornHandler.CallbackPort()
+	pingURL := fmt.Sprintf("http://127.0.0.1:%d/ping", cbPort)
+	slog.Info("Verifying Userscript status...", "url", pingURL)
+
+	cmd := exec.Command("xdg-open", pingURL)
+	if err := cmd.Start(); err != nil {
+		slog.Warn("Failed to auto-launch browser for ping verification", "error", err)
+	}
+
+	select {
+	case <-tornHandler.PongChan():
+		slog.Info("Userscript verification successful! System ready.")
+	case <-time.After(5 * time.Second):
+		slog.Error("CRITICAL ERROR: Userscript did not respond to /ping within 5 seconds. Ensure Tampermonkey is running and the script is enabled!")
+		os.Exit(1)
+	}
 
 	// Bind the Torn handler to the Discord client's MESSAGE_CREATE event pipeline.
 	client.RegisterMessageCreateHandler(tornHandler.OnMessageCreate)

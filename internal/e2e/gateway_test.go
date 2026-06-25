@@ -198,7 +198,7 @@ func TestGatewayE2E(t *testing.T) {
 				shutdownTriggered = true
 			}
 
-			cbPort, err := torn.StartCallbackServer(quota, cache, logger, shutdownHook)
+			cbPort, _, err := torn.StartCallbackServer(quota, cache, logger, shutdownHook)
 			if err != nil {
 				t.Fatalf("Failed to start callback: %v", err)
 			}

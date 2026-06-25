@@ -5,6 +5,8 @@
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
+// @match        http://127.0.0.1:*/ping*
+// @match        http://localhost:*/ping*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
 // @license      MIT
 // @grant        GM_xmlhttpRequest
@@ -16,6 +18,11 @@
 (function () {
     'use strict';
 
+    if (window.location.pathname.startsWith('/ping')) {
+        fetch('/pong').then(() => window.close()).catch(() => window.close());
+        return;
+    }
+
     const savedHash = window.location.hash;
     if (!savedHash.includes('autorevive')) {
         return; // Only run on gateway tabs
@@ -24,7 +31,17 @@
     let isConfirming = false;
     let cbport = null;
     let gatewayXid = new URLSearchParams(window.location.search).get("XID");
-    let minChanceOverride = 60; // Default to 60, can be overridden by gateway hash
+    
+    let minChanceOverride = 60; // Default
+    try {
+        const stored = localStorage.getItem('fastReviveSettings');
+        if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed.threshold !== undefined) minChanceOverride = parsed.threshold;
+        } else {
+            localStorage.setItem('fastReviveSettings', JSON.stringify({threshold: 60}));
+        }
+    } catch (e) {}
     let requiredStatus = null;
     let MIN_AGE_DAYS = 365;
 
@@ -97,11 +114,22 @@
             if (responseTextEl) {
                 const text = responseTextEl.textContent.trim();
                 if (text.includes("chance of success")) return;
+                
                 const isSuccess = responseTextEl.classList.contains('t-green') || text.includes('successfully revived');
+                const isChanceFailure = text.toLowerCase().includes('failed to revive');
+
                 if (cbport && gatewayXid) {
-                    const status = isSuccess ? 'success' : 'fail';
-                    const reason = isSuccess ? '' : text;
-                    logToGateway(status, reason, gatewayXid);
+                    if (isSuccess) {
+                        logToGateway('success', '', gatewayXid);
+                    } else if (isChanceFailure) {
+                        logToGateway('success', 'failed to revive', gatewayXid);
+                    } else {
+                        let reason = text;
+                        if (text.includes("You do not have enough energy to perform this action.")) {
+                            reason = "Not enough energy";
+                        }
+                        logToGateway('fail', reason, gatewayXid);
+                    }
                 }
                 successFound = true;
                 obs.disconnect();
@@ -118,11 +146,11 @@
         setTimeout(() => {
             successObserver.disconnect();
             if (!successFound) {
-                const msg = '[GatewayReviver] Success message not found within 9s.';
+                const msg = '[GatewayReviver] Success message not found within 5s.';
                 console.log(msg);
                 logToGateway('fail', msg);
             }
-        }, 9000);
+        }, 5000);
     };
 
     function autoConfirmRevive() {
@@ -186,10 +214,10 @@
         if (text === "okay") return "User is not in hospital anymore";
         if (text.includes("hospital")) {
             if (text.startsWith("in a ") && text.includes("hospital")) return "User is in a different country's hospital";
-            return null;
+            return `Unknown State: ${text}`;
         }
         if (text.startsWith("hiding out in") || text.startsWith("in ")) return "Not in Hospital, In a different country";
-        return null;
+        return `Unknown State: ${text}`;
     };
 
     const clickReviveButton = () => {

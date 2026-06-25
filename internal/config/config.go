@@ -149,8 +149,8 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Token:            token,
-		TargetChannelIDs: make(map[string]bool),
+		Token:                 token,
+		TargetChannelIDs:      make(map[string]bool),
 		NoHistoryAllowed:      strings.ToLower(noHistoryStr) == "true",
 		RateLimit:             rateLimit,
 		MinAgeDays:            minAgeDays,

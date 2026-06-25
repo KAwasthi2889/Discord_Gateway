@@ -53,6 +53,8 @@ func TestHandler_QuotaRejection(t *testing.T) {
 	}
 
 	quota := NewDailyQuota(0, dir)
+	quota.OnExhausted = func() {} // Prevent test process interruption
+
 	nukeClient := nuke.NewClient("")
 
 	h := NewHandlerForTest(cfg, f, dir, nukeClient, quota, NewPayloadCache(1*time.Second), NewMessageLogger(f), 8080)

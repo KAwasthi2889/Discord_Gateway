@@ -63,6 +63,7 @@ func (c *Client) LoadOrFetch(cachePath string) {
 
 	go c.startPeriodicRefresh()
 }
+
 // IsShitlisted checks if a given player ID or faction ID is on the active shitlist.
 // It returns a boolean indicating if they are shitlisted, and a string indicating
 // the reason ("player" or "faction").
@@ -104,5 +105,3 @@ func (c *Client) GetContract(playerID, factionID int) (ContractData, bool) {
 	}
 	return ContractData{}, false
 }
-
-

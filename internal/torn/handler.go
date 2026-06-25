@@ -35,6 +35,12 @@ type Handler struct {
 
 	// callbackPort is the random OS-assigned port for the JS → Go success callback.
 	callbackPort int
+
+	// globalRateLimiter enforces a strict maximum on the total number of tabs opened per minute.
+	globalRateLimiter *RateLimiter
+
+	// pongChan receives a signal when the userscript responds to the /ping endpoint.
+	pongChan chan struct{}
 }
 
 // NewHandler initializes and returns a new Torn orchestrator.
@@ -43,22 +49,24 @@ type Handler struct {
 func NewHandler(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client) *Handler {
 	quota := NewDailyQuota(cfg.DailyQuota, userDir)
 	logger := NewMessageLogger(logFile)
-	cache := NewPayloadCache(40 * time.Second)
+	cache := NewPayloadCache(25 * time.Second)
 
-	cbPort, err := StartCallbackServer(quota, cache, logger, nil)
+	cbPort, pongChan, err := StartCallbackServer(quota, cache, logger, nil)
 	if err != nil {
 		slog.Warn("Callback server failed to start", "error", err)
 		slog.Info("Daily quota will still gate browser launches, but success tracking is disabled")
 	}
 
 	return &Handler{
-		cfg:          cfg,
-		browser:      NewBrowserLauncher(cfg),
-		logger:       logger,
-		quota:        quota,
-		cache:        cache,
-		nukeClient:   nukeClient,
-		callbackPort: cbPort,
+		cfg:               cfg,
+		browser:           NewBrowserLauncher(cfg),
+		logger:            logger,
+		quota:             quota,
+		cache:             cache,
+		nukeClient:        nukeClient,
+		callbackPort:      cbPort,
+		globalRateLimiter: NewRateLimiter(15, time.Minute),
+		pongChan:          pongChan,
 	}
 }
 
@@ -66,13 +74,15 @@ func NewHandler(cfg *config.Config, logFile *os.File, userDir string, nukeClient
 // without automatically spawning side-effect goroutines like StartCallbackServer.
 func NewHandlerForTest(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client, quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, callbackPort int) *Handler {
 	return &Handler{
-		cfg:          cfg,
-		browser:      NewBrowserLauncher(cfg),
-		logger:       logger,
-		quota:        quota,
-		cache:        cache,
-		nukeClient:   nukeClient,
-		callbackPort: callbackPort,
+		cfg:               cfg,
+		browser:           NewBrowserLauncher(cfg),
+		logger:            logger,
+		quota:             quota,
+		cache:             cache,
+		nukeClient:        nukeClient,
+		callbackPort:      callbackPort,
+		globalRateLimiter: NewRateLimiter(15, time.Minute),
+		pongChan:          make(chan struct{}, 1),
 	}
 }
 
@@ -86,6 +96,21 @@ func (h *Handler) UpdateConfig(cfg *config.Config) {
 	h.cfg = cfg
 	h.browser = NewBrowserLauncher(cfg)
 	h.quota.UpdateLimit(cfg.DailyQuota)
+}
+
+// Quota returns the underlying DailyQuota instance.
+func (h *Handler) Quota() *DailyQuota {
+	return h.quota
+}
+
+// CallbackPort returns the dynamically assigned callback server port.
+func (h *Handler) CallbackPort() int {
+	return h.callbackPort
+}
+
+// PongChan returns the channel used to receive the /pong startup signal.
+func (h *Handler) PongChan() chan struct{} {
+	return h.pongChan
 }
 
 // OnMessageCreate is the primary event sink registered with the Discord Client.
@@ -122,7 +147,10 @@ func (h *Handler) OnMessageCreate(data []byte) {
 	if isCountry && ok {
 		// Stage 2.5: Daily quota gate — reject early if today's ceiling is hit.
 		if !h.quota.Allow() {
-			h.handleRejection("quota", data)
+			slog.Warn("Daily quota limit reached. Dropping request silently and gracefully shutting down.")
+			if h.quota.OnExhausted != nil {
+				h.quota.OnExhausted()
+			}
 			return
 		}
 
@@ -132,6 +160,11 @@ func (h *Handler) OnMessageCreate(data []byte) {
 			factionIDInt, _ := strconv.Atoi(ExtractFactionID(data))
 
 			if h.checkShitlist(xidInt, factionIDInt, xid) {
+				return
+			}
+
+			if !h.globalRateLimiter.Allow() {
+				slog.Info("Global rate limit hit (>15/min). Dropping request silently.")
 				return
 			}
 
