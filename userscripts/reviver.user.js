@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.1.3
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -45,8 +45,9 @@
     let requiredStatus = null;
     let MIN_AGE_DAYS = 365;
 
-    // Strip hash
-    history.replaceState(null, '', window.location.pathname + window.location.search);
+    // Replace hash with #auto to prevent accidental re-triggers on manual refresh
+    // while keeping a marker so fast_revive knows to stay away
+    history.replaceState(null, '', window.location.pathname + window.location.search + '#auto');
 
     const portMatch = savedHash.match(/cbport=(\d+)/);
     if (portMatch) cbport = parseInt(portMatch[1], 10);
