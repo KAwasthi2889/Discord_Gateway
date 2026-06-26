@@ -11,7 +11,7 @@ A highly optimized, zero-allocation Discord Gateway client designed specifically
 - **Dynamic Configuration:** Live configuration reloading via `fsnotify`, enabling token and quota changes without restarting the application.
 - **Nuke API Integration:** Periodically fetches and caches Faction Contracts, Player Packages, and Shitlists to enforce rule-based reviving.
 - **E2E Mock Testing Suite:** Built-in simulated HTTP endpoints to rigorously test Chromedp behavior without spending real in-game energy.
-- **Event-Driven Userscript:** A heavily optimized Tampermonkey script (`fast_revive.user.js`) that leverages browser `MutationObserver` hooks to instantly confirm revive dialogs.
+- **Event-Driven Userscript:** A heavily optimized Tampermonkey script (`reviver.user.js`) that leverages browser `MutationObserver` hooks to instantly confirm revive dialogs.
 
 ## 🏗️ Architecture
 
@@ -62,14 +62,14 @@ When a `MESSAGE_CREATE` event is pushed over the websocket, the payload is route
 If the payload is valid and passes Nuke API contract verification, the system instructs `chromedp` to launch a headless browser pointing directly to the target's profile.
 
 ### The Userscript Execution
-The local Tampermonkey script (`fast_revive.user.js`) detects the `#autorevive` URL hash and immediately scopes a `MutationObserver` directly to the `#profileroot`. It waits exactly for the confirmation dialog, bypasses all global `document.body` scanning overhead, verifies the % chance, and auto-clicks "Yes". Finally, it pings the local Go Callback Server to track the success.
+The local Tampermonkey script (`reviver.user.js`) detects the `#autorevive` URL hash and immediately scopes a `MutationObserver` directly to the `#profileroot`. It waits exactly for the confirmation dialog, bypasses all global `document.body` scanning overhead, verifies the % chance, and auto-clicks "Yes". Finally, it pings the local Go Callback Server to track the success.
 
 ## 🛠️ Prerequisites
 
 - **Go 1.22+** installed on your system.
 - A local browser installation (e.g., Google Chrome or Chromium) for Chromedp.
 - A Discord Bot Token with message content intents.
-- A Tampermonkey extension with `fast_revive.user.js` installed.
+- A Tampermonkey extension with `reviver.user.js` installed.
 
 ## ⚙️ Setup & Configuration
 
