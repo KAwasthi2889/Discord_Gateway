@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -118,7 +119,8 @@ func main() {
 	if resp.StatusCode == http.StatusOK {
 		fmt.Println("Success! Payload injected successfully.")
 	} else {
-		fmt.Printf("Failed: Received HTTP %d from gateway.\n", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Printf("UNEXPECTED ERROR: HTTP %d from gateway: %s\n", resp.StatusCode, string(body))
 		os.Exit(1)
 	}
 }

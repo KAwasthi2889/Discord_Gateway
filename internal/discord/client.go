@@ -244,15 +244,20 @@ func (c *Client) writeJSON(v interface{}) error {
 func (c *Client) fetchGatewayURL() (string, error) {
 	resp, err := http.Get("https://discord.com/api/v" + APIVersion + "/gateway")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("UNEXPECTED ERROR: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("UNEXPECTED ERROR: HTTP %d: %s", resp.StatusCode, string(body))
+	}
 
 	var result struct {
 		URL string `json:"url"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		return "", fmt.Errorf("UNEXPECTED ERROR: decode json: %w", err)
 	}
 	return result.URL, nil
 }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.1.3
+// @version      1.1.4
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -75,12 +75,16 @@
                 GM_xmlhttpRequest({
                     method: "GET",
                     url: url,
-                    onload: () => {
-                        console.log(`[UserScript] Callback fired to port ${cbport}: status=${status}`);
+                    onload: (response) => {
+                        if (response.status !== 200) {
+                            console.error(`UNEXPECTED ERROR: HTTP ${response.status} - ${response.responseText}`);
+                        } else {
+                            console.log(`[UserScript] Callback fired to port ${cbport}: status=${status}`);
+                        }
                         setTimeout(() => window.close(), 1000);
                     },
                     onerror: (e) => {
-                        console.error("[UserScript] GM_xmlhttpRequest failed:", e);
+                        console.error("UNEXPECTED ERROR: [UserScript] GM_xmlhttpRequest failed:", e);
                         setTimeout(() => window.close(), 1000);
                     }
                 });
@@ -215,10 +219,10 @@
         if (text === "okay") return "User is not in hospital anymore";
         if (text.includes("hospital")) {
             if (text.startsWith("in a ") && text.includes("hospital")) return "User is in a different country's hospital";
-            return `Unknown State: ${text}`;
+            return `UNEXPECTED ERROR: Unknown State: ${text}`;
         }
         if (text.startsWith("hiding out in") || text.startsWith("in ")) return "Not in Hospital, In a different country";
-        return `Unknown State: ${text}`;
+        return `UNEXPECTED ERROR: Unknown State: ${text}`;
     };
 
     const clickReviveButton = () => {
@@ -273,9 +277,7 @@
 
             disabledTimeout = setTimeout(() => {
                 disabledObserver.disconnect();
-                const specificError = getPlayerStateError();
-                const msg = specificError ? `[UserScript] ${specificError}` : '[UserScript] Revive button remained disabled for 15s.';
-                logToGateway('fail', msg);
+                logToGateway('fail', '[UserScript] Revive button disabled');
             }, 15000);
 
             return;
