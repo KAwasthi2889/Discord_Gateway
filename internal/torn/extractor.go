@@ -90,12 +90,17 @@ func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, data []byte)
 
 	xidStr := string(xidBytes)
 
+	minAge := cfg.MinAgeDays
+	if bytes.Contains(data, tornRequestedBy) {
+		minAge = 0 // Bypass age check for "On Behalf" requests
+	}
+
 	// Cast the extracted slice to a string. This is the only allocation in this function.
 	// Append #autorevive={MinAgeDays}&cbport={callbackPort} so the userscript knows:
 	//   1. This tab was opened by the gateway (autorevive trigger)
-	//   2. The configured minimum age threshold
+	//   2. The configured minimum age threshold (0 means bypass)
 	//   3. Where to send the success callback
-	link := string(data[idx:end]) + "#autorevive=" + strconv.Itoa(cfg.MinAgeDays) + "&cbport=" + strconv.Itoa(callbackPort)
+	link := string(data[idx:end]) + "#autorevive=" + strconv.Itoa(minAge) + "&cbport=" + strconv.Itoa(callbackPort)
 	return link, xidStr
 }
 

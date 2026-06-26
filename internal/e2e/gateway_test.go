@@ -284,19 +284,9 @@ func TestGatewayE2E(t *testing.T) {
 						time.Sleep(27 * time.Second)
 					} else if !tt.expectNoLog {
 						// Happy path
-						var body string
-						chromedp.Run(ctx, chromedp.OuterHTML("html", &body, chromedp.ByQuery))
-						os.WriteFile(filepath.Join(cfgDir, "debug_html.html"), []byte(body), 0644)
-						os.WriteFile("debug_html.html", []byte(body), 0644)
-						t.Logf("Debug HTML captured")
-						
 						err = chromedp.Run(ctx, chromedp.WaitVisible(`.profile-buttons-dialog`, chromedp.ByQuery))
 						if err != nil {
-							var buf []byte
-							chromedp.Run(ctx, chromedp.CaptureScreenshot(&buf))
-							os.WriteFile(filepath.Join(cfgDir, "timeout_screenshot.png"), buf, 0644)
-							os.WriteFile("timeout_screenshot.png", buf, 0644)
-							t.Fatalf("Chromedp automation failed: %v (Screenshot saved to %s)", err, cfgDir)
+							t.Fatalf("Chromedp automation failed: %v", err)
 						}
 					} else {
 						// Fails in browser (low chance or disabled)
