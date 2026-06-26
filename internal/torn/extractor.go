@@ -7,6 +7,7 @@ import (
 	"discord_gateway/internal/config"
 )
 
+// Global byte signatures used for zero-allocation extraction
 var (
 	// tornProfilePrefix is utilized for zero-allocation byte scanning against the raw payload.
 	// It represents the standard URL prefix for Torn player profiles.

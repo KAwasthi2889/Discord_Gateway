@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -110,7 +111,11 @@ func (c *Client) Run(ctx context.Context) error {
 		if err == nil {
 			slog.Debug("Multiplex: Connected to existing primary. Acting as Replica.")
 			err = RunAsReplica(ctx, replicaConn, c.onMessageCreate)
-			slog.Warn("Multiplex Replica disconnected", "error", err)
+			if err != nil {
+				slog.Warn("Multiplex Replica disconnected with error", "error", err)
+			} else {
+				slog.Debug("Multiplex Replica disconnected gracefully")
+			}
 			time.Sleep(1 * time.Second) // Prevent tight loops
 			continue
 		}
@@ -146,7 +151,9 @@ func (c *Client) Run(ctx context.Context) error {
 		}
 
 		if err == io.EOF {
-			slog.Info("Graceful Gateway disconnection")
+			slog.Debug("Graceful Gateway disconnection")
+		} else if err != nil && strings.Contains(err.Error(), "server requested reconnect") {
+			slog.Info("Gateway disconnected (server requested reconnect)")
 		} else {
 			slog.Warn("Gateway disconnected", "error", err)
 		}

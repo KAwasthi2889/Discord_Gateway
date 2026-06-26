@@ -42,7 +42,7 @@ func NewDailyQuota(limit int, dir string) *DailyQuota {
 		filePath: filepath.Join(dir, "quota.json"),
 		date:     today(),
 		OnExhausted: func() {
-			slog.Warn("Quota exhausted — shutting down")
+			slog.Info("Quota exhausted, shutting down")
 			if p, err := os.FindProcess(os.Getpid()); err == nil {
 				_ = p.Signal(os.Interrupt)
 			}
@@ -52,7 +52,7 @@ func NewDailyQuota(limit int, dir string) *DailyQuota {
 	// Attempt to restore state from disk.
 	dq.loadFromDisk()
 
-	slog.Info("Daily quota loaded from disk", "limit", dq.limit, "used", dq.used, "remaining", dq.limit-dq.used)
+	slog.Debug("Daily quota loaded from disk", "limit", dq.limit, "used", dq.used, "remaining", dq.limit-dq.used)
 
 	return dq
 }
@@ -131,7 +131,7 @@ func (dq *DailyQuota) rolloverIfNeeded() {
 func (dq *DailyQuota) loadFromDisk() {
 	data, err := os.ReadFile(dq.filePath)
 	if err != nil {
-		return // File doesn't exist yet — fresh start.
+		return // File doesn't exist yet, fresh start.
 	}
 
 	var state quotaState

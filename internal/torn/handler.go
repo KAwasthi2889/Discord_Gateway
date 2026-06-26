@@ -147,9 +147,9 @@ func (h *Handler) OnMessageCreate(data []byte) {
 	}
 
 	if isCountry && ok {
-		// Stage 2.5: Daily quota gate — reject early if today's ceiling is hit.
+		// Stage 2.5: Daily quota reached, reject early if today's ceiling is hit.
 		if !h.quota.Allow() {
-			slog.Warn("Daily quota limit reached. Dropping request silently and gracefully shutting down.")
+			slog.Warn("Daily quota limit reached. Dropping request silently and shutting down.")
 			if h.quota.OnExhausted != nil {
 				h.quota.OnExhausted()
 			}
@@ -211,7 +211,7 @@ func (h *Handler) checkShitlist(xidInt, factionIDInt int, xid string) bool {
 			if slType == "faction" && h.cfg.IgnoreFactionShitlist {
 				slog.Info("Ignoring faction shitlist", "xid", xid, "factionID", factionIDInt)
 			} else {
-				slog.Info("Request dropped silently", "reason", "on shitlist", "type", slType, "xid", xid)
+				slog.Info("Request dropped silently, target is on shitlist", "xid", xid)
 				return true
 			}
 		}
@@ -242,7 +242,7 @@ func (h *Handler) handleRejection(reason string, data []byte) {
 	copy(payloadCopy, data)
 
 	go func(r string, payload []byte) {
-		slog.Info("Request rejected", "reason", r)
+		slog.Debug("Request rejected", "reason", r)
 		if rec := ExtractRecord(payload); rec != nil {
 			// Dereference the pointer (*rec) so slog prints {PlayerName...} instead of &{PlayerName...}
 			slog.Debug("Rejected payload details", "record:", *rec)

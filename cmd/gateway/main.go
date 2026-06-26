@@ -85,7 +85,7 @@ func main() {
 
 	// Immediately check quota on startup
 	if !tornHandler.Quota().Allow() {
-		slog.Error("Daily quota limit already reached on startup! Exiting gracefully.")
+		slog.Info("Daily quota limit already reached on startup! Exiting gracefully.")
 		os.Exit(0)
 	}
 

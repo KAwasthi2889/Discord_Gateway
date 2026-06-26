@@ -43,7 +43,7 @@ func startTestingServer(ctx context.Context, userDir string, tornHandler *torn.H
 			return
 		}
 
-		slog.Info("Received injected payload for testing", "size", len(body))
+		slog.Debug("Received injected payload for testing", "size", len(body))
 
 		// Inject directly into the pipeline!
 		tornHandler.OnMessageCreate(body)

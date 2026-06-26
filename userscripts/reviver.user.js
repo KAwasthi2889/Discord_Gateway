@@ -31,7 +31,7 @@
     let isConfirming = false;
     let cbport = null;
     let gatewayXid = new URLSearchParams(window.location.search).get("XID");
-    
+
     let minChanceOverride = 60; // Default
     try {
         const stored = localStorage.getItem('fastReviveSettings');
@@ -39,9 +39,9 @@
             const parsed = JSON.parse(stored);
             if (parsed.threshold !== undefined) minChanceOverride = parsed.threshold;
         } else {
-            localStorage.setItem('fastReviveSettings', JSON.stringify({threshold: 60}));
+            localStorage.setItem('fastReviveSettings', JSON.stringify({ threshold: 60 }));
         }
-    } catch (e) {}
+    } catch (e) { }
     let requiredStatus = null;
     let MIN_AGE_DAYS = 365;
 
@@ -115,7 +115,7 @@
             if (responseTextEl) {
                 const text = responseTextEl.textContent.trim();
                 if (text.includes("chance of success")) return;
-                
+
                 const isSuccess = responseTextEl.classList.contains('t-green') || text.includes('successfully revived');
                 const isChanceFailure = text.toLowerCase().includes('failed to revive');
 
@@ -166,7 +166,7 @@
                     yesButton.click();
                     watchForSuccessAndClose();
                 } else {
-                    logToGateway('fail', `[GatewayReviver] Skipped auto-revive — chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
+                    logToGateway('fail', `[GatewayReviver] Skipped auto-revive, chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
                 }
             } else {
                 logToGateway('fail', '[GatewayReviver] Could not determine success chance.');
@@ -240,7 +240,7 @@
                         if (match) currentStatus = match[1].toUpperCase();
                     }
                     if (currentStatus !== requiredStatus) {
-                        const msg = `[GatewayReviver] Skipped auto-revive — player is ${currentStatus}, but contract requires ${requiredStatus}.`;
+                        const msg = `[GatewayReviver] Skipped auto-revive, player is ${currentStatus}, but contract requires ${requiredStatus}.`;
                         logToGateway('fail', msg);
                         return;
                     }
@@ -248,7 +248,7 @@
 
                 const ageDays = getPlayerAgeDays();
                 if (ageDays !== null && ageDays < MIN_AGE_DAYS) {
-                    const msg = `[GatewayReviver] Skipped auto-revive — player age ${ageDays} days is under ${MIN_AGE_DAYS} day minimum.`;
+                    const msg = `[GatewayReviver] Skipped auto-revive, player age ${ageDays} days is under ${MIN_AGE_DAYS} day minimum.`;
                     logToGateway('fail', msg);
                     return;
                 }
@@ -321,7 +321,7 @@
         autoReviveTimeout = setTimeout(() => {
             autoReviveObserver.disconnect();
             const specificError = getPlayerStateError();
-            const msg = specificError ? `[GatewayReviver] ${specificError}` : '[GatewayReviver] Auto-revive timed out — revive button not found.';
+            const msg = specificError ? `[GatewayReviver] ${specificError}` : '[GatewayReviver] Auto-revive timed out, revive button not found.';
             logToGateway('fail', msg);
         }, 10000);
     }

@@ -34,7 +34,7 @@ func (c *Client) startPeriodicRefresh() {
 }
 
 func (c *Client) refreshAll() {
-	slog.Info("Refreshing Nuke API Shitlist and Contracts data...")
+	slog.Debug("Refreshing Nuke API Shitlist and Contracts data...")
 
 	newShitlistPlayers := make(map[int]bool)
 	newShitlistFactions := make(map[int]bool)
@@ -142,7 +142,7 @@ func (c *Client) refreshAll() {
 	c.playerContracts = newPlayerContracts
 	c.mu.Unlock()
 
-	slog.Info("Nuke API refresh complete",
+	slog.Debug("Nuke API refresh complete",
 		"shitlisted_players", len(c.shitlistPlayers),
 		"shitlisted_factions", len(c.shitlistFactions),
 		"faction_contracts", len(c.factionContracts),

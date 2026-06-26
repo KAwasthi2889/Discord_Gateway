@@ -55,9 +55,9 @@ This document maps the entire lifecycle of a request from Discord message arriva
 
 ### 6. Userscript Pre-Click Checks
 - **Status Override Check**:
-  - *Failure Condition*: If contract enforces `ONLINE` but player is `OFFLINE`, calls back with fail status: `[GatewayReviver] Skipped auto-revive — player is {current}, but contract requires {required}.`
+  - *Failure Condition*: If contract enforces `ONLINE` but player is `OFFLINE`, calls back with fail status: `[GatewayReviver] Skipped auto-revive, player is {current}, but contract requires {required}.`
 - **Age Minimum Check**:
-  - *Failure Condition*: If player age is under `MIN_AGE_DAYS`, calls back with fail status: `[GatewayReviver] Skipped auto-revive — player age {age} days is under {min} day minimum.`
+  - *Failure Condition*: If player age is under `MIN_AGE_DAYS`, calls back with fail status: `[GatewayReviver] Skipped auto-revive, player age {age} days is under {min} day minimum.`
 - **Disabled/Cross Button State**:
   - *Failure Condition*: If button is disabled, watches it for 15 seconds. If it never becomes active, calls back with fail status: `[GatewayReviver] Revive button remained disabled for 15s.`
 
@@ -66,7 +66,7 @@ This document maps the entire lifecycle of a request from Discord message arriva
 - **Threshold Matching**: Reads user's stored threshold from browser `localStorage` (`fastReviveSettings.threshold`). If missing, defaults to `60` and writes `{"threshold": 60}` back into `localStorage`.
 - **Chance Extraction**: Reads the percentage from the confirmation dialog.
   - *Failure Condition*: If chance cannot be read, calls back with fail status: `[GatewayReviver] Could not determine success chance.`
-  - *Failure Condition*: If chance < effective threshold, calls back with fail status: `[GatewayReviver] Skipped auto-revive — chance {x}% is below minChance {y}%.`
+  - *Failure Condition*: If chance < effective threshold, calls back with fail status: `[GatewayReviver] Skipped auto-revive, chance {x}% is below minChance {y}%.`
 - **Confirm Click**: Clicks `.confirm-action-yes`.
 
 ### 8. Userscript Result Observation

@@ -75,7 +75,7 @@ func main() {
 		}
 
 		// Dump the exact raw payload as received from Discord, unmodified.
-		// No json.Indent or re-marshaling — preserves the exact byte sequence
+		// No json.Indent or re-marshaling, preserves the exact byte sequence
 		// so we can verify what Discord actually sends.
 		output := fmt.Sprintf("\n========== NEW MESSAGE AT %s ==========\n%s\n======================================================\n",
 			time.Now().Format("2006-01-02 15:04:05"),

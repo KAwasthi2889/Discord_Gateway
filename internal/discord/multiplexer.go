@@ -130,6 +130,9 @@ func RunAsReplica(ctx context.Context, conn net.Conn, handlers []MessageCreateHa
 	for {
 		var sizeBuf [4]byte
 		if _, err := io.ReadFull(conn, sizeBuf[:]); err != nil {
+			if ctx.Err() != nil {
+				return nil // Graceful shutdown, connection closed by context
+			}
 			return err
 		}
 		size := binary.BigEndian.Uint32(sizeBuf[:])
@@ -139,6 +142,9 @@ func RunAsReplica(ctx context.Context, conn net.Conn, handlers []MessageCreateHa
 
 		data := make([]byte, size)
 		if _, err := io.ReadFull(conn, data); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return err
 		}
 
