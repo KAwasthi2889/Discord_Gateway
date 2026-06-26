@@ -1,4 +1,9 @@
 *.csv
 *.txt
 *.env
+*.log
+*.json
+*.html
+*.test
 discord_wss
+raw_inspect

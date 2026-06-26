@@ -15,6 +15,7 @@ import (
 // by rapid bursts of target URLs.
 type BrowserLauncher struct {
 	limiter *RateLimiter
+	Launcher func(url string)
 }
 
 // NewBrowserLauncher creates a new BrowserLauncher instance initialized with a
@@ -27,14 +28,14 @@ func NewBrowserLauncher(cfg *config.Config) *BrowserLauncher {
 	}
 }
 
-var BrowserOverride func(url string)
-
 // Open evaluates the target URL against the active rate limits. If permitted,
 // it dispatches an asynchronous `xdg-open` command to launch the browser in a
 // detached goroutine. Returns true if the browser was launched, false if rate-limited.
 func (b *BrowserLauncher) Open(url string, xid string) bool {
 	if b.limiter.Allow() {
-		if BrowserOverride == nil {
+		if b.Launcher != nil {
+			b.Launcher(url)
+		} else {
 			// Launch the browser asynchronously to prevent blocking the WebSocket read pump.
 			go func(target string) {
 				// Give xdg-open a maximum of 5 seconds to hand off the URL to the browser.
@@ -49,8 +50,6 @@ func (b *BrowserLauncher) Open(url string, xid string) bool {
 					}
 				}
 			}(url)
-		} else {
-			BrowserOverride(url)
 		}
 		slog.Debug(fmt.Sprintf("Dispatched xdg-open for %s", xid))
 		return true

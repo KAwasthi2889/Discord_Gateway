@@ -49,7 +49,7 @@ type Handler struct {
 func NewHandler(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client) *Handler {
 	quota := NewDailyQuota(cfg.DailyQuota, userDir)
 	logger := NewMessageLogger(logFile)
-	cache := NewPayloadCache(25 * time.Second)
+	cache := NewPayloadCache(25*time.Second, 0)
 
 	cbPort, pongChan, err := StartCallbackServer(quota, cache, logger, nil)
 	if err != nil {
@@ -72,10 +72,12 @@ func NewHandler(cfg *config.Config, logFile *os.File, userDir string, nukeClient
 
 // NewHandlerForTest allows test injection of mocked or explicitly configured dependencies
 // without automatically spawning side-effect goroutines like StartCallbackServer.
-func NewHandlerForTest(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client, quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, callbackPort int) *Handler {
+func NewHandlerForTest(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client, quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, callbackPort int, browserLauncher func(url string)) *Handler {
+	b := NewBrowserLauncher(cfg)
+	b.Launcher = browserLauncher
 	return &Handler{
 		cfg:               cfg,
-		browser:           NewBrowserLauncher(cfg),
+		browser:           b,
 		logger:            logger,
 		quota:             quota,
 		cache:             cache,

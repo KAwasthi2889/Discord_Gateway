@@ -21,14 +21,19 @@ type PayloadCache struct {
 	mu      sync.Mutex
 	items   map[string]cachedPayload
 	timeout time.Duration
+	ticker  time.Duration
 }
 
 // NewPayloadCache initializes a new thread-safe cache and starts the background
 // cleanup routine.
-func NewPayloadCache(timeout time.Duration) *PayloadCache {
+func NewPayloadCache(timeout time.Duration, tickerInterval time.Duration) *PayloadCache {
+	if tickerInterval == 0 {
+		tickerInterval = 10 * time.Second
+	}
 	pc := &PayloadCache{
 		items:   make(map[string]cachedPayload),
 		timeout: timeout,
+		ticker:  tickerInterval,
 	}
 	go pc.cleanupRoutine()
 	return pc
@@ -60,7 +65,7 @@ func (pc *PayloadCache) Pop(xid string) ([]byte, string, bool) {
 // cleanupRoutine runs periodically to evict payloads that have exceeded the timeout.
 // Evicted payloads are logged to the console as failures.
 func (pc *PayloadCache) cleanupRoutine() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(pc.ticker)
 	for range ticker.C {
 		pc.mu.Lock()
 		now := time.Now()

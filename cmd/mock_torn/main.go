@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -9,9 +10,16 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/profiles.php", handleProfiles)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/log", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		fmt.Printf("BROWSER_LOG: %s\n", string(body))
+		w.WriteHeader(200)
+	})
+	mux.HandleFunc("/profiles.php", handleProfiles)
+
 	log.Println("Mock Torn server listening on http://127.0.0.1:8080")
-	log.Fatal(http.ListenAndServe("127.0.0.1:8080", nil))
+	log.Fatal(http.ListenAndServe("127.0.0.1:8080", mux))
 }
 
 func handleProfiles(w http.ResponseWriter, r *http.Request) {
@@ -63,31 +71,69 @@ func handleProfiles(w http.ResponseWriter, r *http.Request) {
 			</ul>
 		</div>
 		
-		<button class="profile-button-revive ` + func() string {
+		` + func() string {
+		if scenario == "traveling_hospital" || scenario == "traveling_country" || scenario == "okay" || scenario == "unfamiliar" || scenario == "hang" {
+			return ""
+		}
+		btnClass := "profile-button-revive "
 		if scenario == "disabled" {
-			return "disabled"
+			btnClass += "disabled"
+		}
+		return `<button class="` + btnClass + `">Revive</button>`
+	}() + `
+
+	<div class="main-desc">` + func() string {
+		if scenario == "traveling_hospital" {
+			return "In British hospital"
+		} else if scenario == "traveling_country" {
+			return "In Switzerland"
+		} else if scenario == "okay" {
+			return "Okay"
+		} else if scenario == "unfamiliar" {
+			return "Some weird unknown Torn error text"
 		}
 		return ""
-	}() + `">Revive</button>
+	}() + `</div>
 
 		<div id="dialog-container"></div>
 		<div class="error-box" id="error-box"></div>
 
 		<script>
+			console.log("Mock Torn: Script initializing");
+			const _originalLog = console.log;
+			console.log = function(...args) {
+				_originalLog(...args);
+				fetch('/log', { method: 'POST', body: args.join(' ') }).catch(e => {});
+			};
+			const _originalError = console.error;
+			console.error = function(...args) {
+				_originalError(...args);
+				fetch('/log', { method: 'POST', body: 'ERROR: ' + args.join(' ') }).catch(e => {});
+			};
+			window.onerror = function(msg, url, line) {
+				fetch('/log', { method: 'POST', body: 'UNCAUGHT ERROR: ' + msg + ' at line ' + line }).catch(e => {});
+			};
+
 			// Mock GM_xmlhttpRequest using standard fetch
-			window.GM_xmlhttpRequest = function(details) {
+			const GM_xmlhttpRequest = function(details) {
 				console.log("Mock GM_xmlhttpRequest intercepting request:", details.url);
-				fetch(details.url, { method: details.method || "GET" })
-					.then(response => {
-						if (details.onload) details.onload({ status: response.status });
-					})
+				const fetchOpts = { method: details.method || "GET" };
+				if (details.data) {
+					fetchOpts.body = details.data;
+				}
+				fetch(details.url, fetchOpts)
+					.then(response => response.text().then(text => {
+						if (details.onload) details.onload({ status: response.status, responseText: text });
+					}))
 					.catch(err => {
 						if (details.onerror) details.onerror(err);
 					});
 			};
 
 			// Simulate the Torn UI clicking logic
-			document.querySelector('.profile-button-revive').addEventListener('click', function() {
+			const reviveBtn = document.querySelector('.profile-button-revive');
+			if (reviveBtn) {
+				reviveBtn.addEventListener('click', function() {
 				console.log("Mock Torn: Revive button clicked");
 
 				if (this.classList.contains('disabled')) {
@@ -128,6 +174,18 @@ func handleProfiles(w http.ResponseWriter, r *http.Request) {
 						return;
 					}
 
+				if ("` + scenario + `" === "chance_fail") {
+					setTimeout(() => {
+						document.getElementById('dialog-container').innerHTML = 
+							'<div class="profile-buttons-dialog" style="display:block;">' +
+								'<div class="center-block">' +
+									'<div class="text t-red">You failed to revive the player!</div>' +
+								'</div>' +
+							'</div>';
+					}, 500);
+					return;
+				}
+
 					// Simulate network delay for revive
 					setTimeout(() => {
 						document.getElementById('dialog-container').innerHTML = 
@@ -139,6 +197,7 @@ func handleProfiles(w http.ResponseWriter, r *http.Request) {
 					}, 500);
 				});
 			});
+			}
 		</script>
 		
 		<script>

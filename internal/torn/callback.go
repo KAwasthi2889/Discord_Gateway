@@ -1,6 +1,7 @@
 package torn
 
 import (
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -39,6 +40,7 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 	})
 
 	mux.HandleFunc("/revive", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("GATEWAY RECEIVED: %s", r.URL.String())
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		xid := r.URL.Query().Get("xid")
 		status := r.URL.Query().Get("status")
