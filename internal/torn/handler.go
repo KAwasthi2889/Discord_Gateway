@@ -161,7 +161,16 @@ func (h *Handler) OnMessageCreate(data []byte) {
 			xidInt, _ := strconv.Atoi(xid)
 			factionIDInt, _ := strconv.Atoi(ExtractFactionID(data))
 
-			if h.checkShitlist(xidInt, factionIDInt, xid) {
+			shitlistTargetXID := xidInt
+			shitlistTargetXIDStr := xid
+			if requesterXIDStr := ExtractRequesterXID(data); requesterXIDStr != "" {
+				if reqInt, err := strconv.Atoi(requesterXIDStr); err == nil {
+					shitlistTargetXID = reqInt
+					shitlistTargetXIDStr = requesterXIDStr
+				}
+			}
+
+			if h.checkShitlist(shitlistTargetXID, factionIDInt, shitlistTargetXIDStr) {
 				return
 			}
 

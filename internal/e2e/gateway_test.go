@@ -88,6 +88,12 @@ func TestGatewayE2E(t *testing.T) {
 			expectedInLog:    "TestUser,1234567,regular,Torn,No faction",
 		},
 		{
+			name:             "Drop - Shitlisted Requester On Behalf",
+			payload:          `{"channel_id":"111","embeds":[{"title":"🤝 On Behalf: Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"value":"[Link](https://www.torn.com/profiles.php?XID=1234567)","name":"Profile"},{"value":"TestUser [1234567]","name":"Player"},{"value":"No faction","name":"Faction"},{"value":"[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)","name":"🤝 Requested By (On Behalf)"},{"value":"**5** confirmed paid revives in the last 90 days","name":"\ud83d\udcca Revive History"}]}]}`,
+			mockTornScenario: "success",
+			expectNoLog:      true,
+		},
+		{
 			name:             "Drop - Shitlisted Player",
 			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=9999)"},{"name":"Player","value":"TestUser [9999]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
 			mockTornScenario: "success",

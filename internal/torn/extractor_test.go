@@ -88,3 +88,18 @@ func TestIsPaidRegularRevive(t *testing.T) {
 		t.Error("Expected no history to be accepted when allowed")
 	}
 }
+
+func TestExtractRequesterXID(t *testing.T) {
+	data := []byte(`{"value":"[JonnyCase [2185985]](https://www.torn.com/profiles.php?XID=2185985)","name":"Player","inline":false},{"value":"[PT-ShadowRazers [478]](https://www.torn.com/factions.php?step=profile&ID=478)","name":"Faction","inline":false},{"value":"Torn","name":"Country","inline":false},{"value":"[Magic [2471842]](https://www.torn.com/profiles.php?XID=2471842) - **Contact THIS player for payment!!**","name":"🤝 Requested By (On Behalf)","inline":false}`)
+	expectedXID := "2471842"
+	actualXID := ExtractRequesterXID(data)
+	if actualXID != expectedXID {
+		t.Errorf("Expected Requester XID %s, got %s", expectedXID, actualXID)
+	}
+
+	// Test when no requester is present
+	dataWithoutRequester := []byte(`{"value":"[JonnyCase [2185985]](https://www.torn.com/profiles.php?XID=2185985)","name":"Player","inline":false}`)
+	if ExtractRequesterXID(dataWithoutRequester) != "" {
+		t.Errorf("Expected empty string when no requester present")
+	}
+}

@@ -31,6 +31,9 @@ var (
 
 	// tornNoReviveHistory is the byte signature indicating a player has no recent paid revives.
 	tornNoReviveHistory = []byte("No recorded history in the last 90 days")
+
+	// tornRequestedBy is the byte signature for "On Behalf" requests.
+	tornRequestedBy = []byte("Requested By (On Behalf)")
 )
 
 // IsTornCountry analyzes a raw JSON byte slice for the exact Torn country field
@@ -118,4 +121,33 @@ func ExtractFactionID(data []byte) string {
 	}
 
 	return string(factionBytes)
+}
+
+// ExtractRequesterXID scans a raw JSON byte slice for an "On Behalf" revive request
+// and dynamically extracts the numeric XID of the original requester.
+//
+// Returns the raw Requester XID as a string, or an empty string if not found.
+func ExtractRequesterXID(data []byte) string {
+	idx := bytes.Index(data, tornRequestedBy)
+	if idx == -1 {
+		return ""
+	}
+
+	// Search backwards from the "Requested By" field to find the closest profile link
+	prefixIdx := bytes.LastIndex(data[:idx], tornProfilePrefix)
+	if prefixIdx == -1 {
+		return ""
+	}
+
+	end := prefixIdx + len(tornProfilePrefix)
+	for end < len(data) && data[end] >= '0' && data[end] <= '9' {
+		end++
+	}
+
+	xidBytes := data[prefixIdx+len(tornProfilePrefix) : end]
+	if len(xidBytes) == 0 {
+		return ""
+	}
+
+	return string(xidBytes)
 }
