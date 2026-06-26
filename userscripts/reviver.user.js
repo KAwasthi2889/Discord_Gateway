@@ -76,16 +76,16 @@
                     method: "GET",
                     url: url,
                     onload: () => {
-                        console.log(`[GatewayReviver] Callback fired to port ${cbport}: status=${status}`);
+                        console.log(`[UserScript] Callback fired to port ${cbport}: status=${status}`);
                         setTimeout(() => window.close(), 1000);
                     },
                     onerror: (e) => {
-                        console.error("[GatewayReviver] GM_xmlhttpRequest failed:", e);
+                        console.error("[UserScript] GM_xmlhttpRequest failed:", e);
                         setTimeout(() => window.close(), 1000);
                     }
                 });
             } else {
-                console.error("[GatewayReviver] Fatal: GM_xmlhttpRequest not granted!");
+                console.error("[UserScript] Fatal: GM_xmlhttpRequest not granted!");
                 setTimeout(() => window.close(), 1000);
             }
         }
@@ -147,7 +147,7 @@
         setTimeout(() => {
             successObserver.disconnect();
             if (!successFound) {
-                const msg = '[GatewayReviver] Success message not found within 5s.';
+                const msg = '[UserScript] Success message not found within 5s.';
                 console.log(msg);
                 logToGateway('fail', msg);
             }
@@ -166,10 +166,10 @@
                     yesButton.click();
                     watchForSuccessAndClose();
                 } else {
-                    logToGateway('fail', `[GatewayReviver] Skipped auto-revive, chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
+                    logToGateway('fail', `[UserScript] Skipped auto-revive, chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
                 }
             } else {
-                logToGateway('fail', '[GatewayReviver] Could not determine success chance.');
+                logToGateway('fail', '[UserScript] Could not determine success chance.');
             }
         }
     }
@@ -225,7 +225,7 @@
         const revButton = document.querySelector('.profile-button-revive');
         if (!revButton) {
             const specificError = getPlayerStateError();
-            const msg = specificError ? `[GatewayReviver] ${specificError}` : '[GatewayReviver] Revive button disappeared while waiting.';
+            const msg = specificError ? `[UserScript] ${specificError}` : '[UserScript] Revive button disappeared while waiting.';
             logToGateway('fail', msg);
             return;
         }
@@ -240,7 +240,7 @@
                         if (match) currentStatus = match[1].toUpperCase();
                     }
                     if (currentStatus !== requiredStatus) {
-                        const msg = `[GatewayReviver] Skipped auto-revive, player is ${currentStatus}, but contract requires ${requiredStatus}.`;
+                        const msg = `[UserScript] Skipped auto-revive, player is ${currentStatus}, but contract requires ${requiredStatus}.`;
                         logToGateway('fail', msg);
                         return;
                     }
@@ -248,7 +248,7 @@
 
                 const ageDays = getPlayerAgeDays();
                 if (ageDays !== null && ageDays < MIN_AGE_DAYS) {
-                    const msg = `[GatewayReviver] Skipped auto-revive, player age ${ageDays} days is under ${MIN_AGE_DAYS} day minimum.`;
+                    const msg = `[UserScript] Skipped auto-revive, player age ${ageDays} days is under ${MIN_AGE_DAYS} day minimum.`;
                     logToGateway('fail', msg);
                     return;
                 }
@@ -258,7 +258,7 @@
         };
 
         if (revButton.classList.contains('disabled') || revButton.classList.contains('cross')) {
-            console.log("[GatewayReviver] Revive button is disabled. Watching for it to become active...");
+            console.log("[UserScript] Revive button is disabled. Watching for it to become active...");
             let disabledTimeout;
 
             const disabledObserver = new MutationObserver(() => {
@@ -274,7 +274,7 @@
             disabledTimeout = setTimeout(() => {
                 disabledObserver.disconnect();
                 const specificError = getPlayerStateError();
-                const msg = specificError ? `[GatewayReviver] ${specificError}` : '[GatewayReviver] Revive button remained disabled for 15s.';
+                const msg = specificError ? `[UserScript] ${specificError}` : '[UserScript] Revive button remained disabled for 15s.';
                 logToGateway('fail', msg);
             }, 15000);
 
@@ -311,7 +311,7 @@
                     clickReviveButton();
                 } else {
                     const specificError = getPlayerStateError();
-                    const msg = specificError ? `[GatewayReviver] ${specificError}` : '[GatewayReviver] Target is not in the hospital.';
+                    const msg = specificError ? `[UserScript] ${specificError}` : '[UserScript] Target is not in the hospital.';
                     logToGateway('fail', msg);
                 }
             }
@@ -321,7 +321,7 @@
         autoReviveTimeout = setTimeout(() => {
             autoReviveObserver.disconnect();
             const specificError = getPlayerStateError();
-            const msg = specificError ? `[GatewayReviver] ${specificError}` : '[GatewayReviver] Auto-revive timed out, revive button not found.';
+            const msg = specificError ? `[UserScript] ${specificError}` : '[UserScript] Auto-revive timed out, revive button not found.';
             logToGateway('fail', msg);
         }, 10000);
     }

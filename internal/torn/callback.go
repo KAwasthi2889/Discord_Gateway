@@ -1,7 +1,6 @@
 package torn
 
 import (
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -40,11 +39,16 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 	})
 
 	mux.HandleFunc("/revive", func(w http.ResponseWriter, r *http.Request) {
-		slog.Debug(fmt.Sprintf("GATEWAY RECEIVED: %s", r.URL.String()))
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		xid := r.URL.Query().Get("xid")
 		status := r.URL.Query().Get("status")
 		reason := r.URL.Query().Get("reason")
+
+		if reason != "" {
+			slog.Debug("Callback received", "xid", xid, "status", status, "reason", reason)
+		} else {
+			slog.Debug("Callback received", "xid", xid, "status", status)
+		}
 
 		payload, contractNote, found := cache.Pop(xid)
 		if !found {
