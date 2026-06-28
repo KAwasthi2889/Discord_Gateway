@@ -25,7 +25,11 @@ func setupTestEnvironment(t *testing.T) (*nuke.Client, *httptest.Server) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/shit-lists", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":[{"playerId":9999,"isApproved":true,"shitListCategoryId":2},{"factionId":8888,"isApproved":true,"isFactionBan":true,"shitListCategoryId":1}]}`))
+		w.Write([]byte(`{"data":[
+			{"playerId":9999,"isApproved":true,"shitListCategoryId":2},
+			{"playerId":5555,"isApproved":true,"shitListCategoryId":3},
+			{"factionId":8888,"isApproved":true,"isFactionBan":true,"shitListCategoryId":1}
+		]}`))
 	})
 	mux.HandleFunc("/api/contracts/get_contracts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -48,6 +52,14 @@ func setupTestEnvironment(t *testing.T) (*nuke.Client, *httptest.Server) {
 	nukeClient.LoadOrFetch("") // Provide empty path to force fetch
 
 	return nukeClient, nukeServer
+}
+
+func makeTestPayload(title, targetXID, factionStr, requesterStr string) string {
+	reqField := ""
+	if requesterStr != "" {
+		reqField = fmt.Sprintf(`{"value":"%s","name":"🤝 Requested By (On Behalf)"},`, requesterStr)
+	}
+	return fmt.Sprintf(`{"channel_id":"111","embeds":[{"title":"%s","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=%s)"},{"name":"Player","value":"TestUser [%s]"},{"name":"Faction","value":"%s"},%s{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`, title, targetXID, targetXID, factionStr, reqField)
 }
 
 func TestGatewayE2E(t *testing.T) {
@@ -83,105 +95,117 @@ func TestGatewayE2E(t *testing.T) {
 	}{
 		{
 			name:             "Success - Standard Revive",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=1234567)"},{"name":"Player","value":"TestUser [1234567]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "1234567", "No faction", ""),
 			mockTornScenario: "success",
 			expectedInLog:    "TestUser,1234567,regular,Torn,No faction",
 		},
 		{
 			name:             "Drop - Shitlisted Requester On Behalf",
-			payload:          `{"channel_id":"111","embeds":[{"title":"🤝 On Behalf: Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"value":"[Link](https://www.torn.com/profiles.php?XID=1234567)","name":"Profile"},{"value":"TestUser [1234567]","name":"Player"},{"value":"No faction","name":"Faction"},{"value":"[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)","name":"🤝 Requested By (On Behalf)"},{"value":"**5** confirmed paid revives in the last 90 days","name":"\ud83d\udcca Revive History"}]}]}`,
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1234567", "No faction", "[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)"),
 			mockTornScenario: "success",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Drop - Shitlisted Player",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=9999)"},{"name":"Player","value":"TestUser [9999]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "9999", "No faction", ""),
 			mockTornScenario: "success",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Drop - Shitlisted Faction",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=1111)"},{"name":"Player","value":"TestUser [1111]"},{"name":"Faction","value":"[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", ""),
+			mockTornScenario: "success",
+			expectNoLog:      true,
+		},
+		{
+			name:             "Success - Shitlisted Target (Cat 3) but Clean Requester On Behalf",
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "5555", "No faction", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)"),
+			mockTornScenario: "success",
+			expectedInLog:    "TestUser,5555,regular,Torn,No faction",
+		},
+		{
+			name:             "Drop - Shitlisted Faction with Clean Requester On Behalf",
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)"),
 			mockTornScenario: "success",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Success - Faction Contract Override",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=2222)"},{"name":"Player","value":"TestUser [2222]"},{"name":"Faction","value":"[Faction [7777]](https://www.torn.com/factions.php?step=profile&ID=7777)"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "2222", "[Faction [7777]](https://www.torn.com/factions.php?step=profile&ID=7777)", ""),
 			mockTornScenario: "success",          // Success means 100% chance, so it passes the 50% minChance injected
 			expectedInLog:    "Faction Contract", // Should be appended as the Contract Note
 		},
 		{
 			name:             "Fail - Low Chance",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=3333)"},{"name":"Player","value":"TestUser [3333]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "3333", "No faction", ""),
 			mockTornScenario: "low_chance", // 10% chance
 			expectNoLog:      true,         // Fails in browser, no successful CSV record
 		},
 		{
 			name:             "Fail - Button Disabled",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=4444)"},{"name":"Player","value":"TestUser [4444]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "4444", "No faction", ""),
 			mockTornScenario: "disabled",
 			expectNoLog:      true, // Fails in browser
 		},
 		{
 			name:             "Fail - Energy Error Shutdown",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=5555)"},{"name":"Player","value":"TestUser [5555]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "5555", "No faction", ""),
 			mockTornScenario: "energy_error",
 			expectNoLog:      true,
 			expectShutdown:   true,
 		},
 		{
 			name:             "Fail - Timeout",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=6666)"},{"name":"Player","value":"TestUser [6666]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "6666", "No faction", ""),
 			mockTornScenario: "timeout",
 			expectNoLog:      true, // Times out, no CSV
 		},
 		{
 			name:             "Fail - Status Offline but Online Required",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=7777)"},{"name":"Player","value":"TestUser [7777]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "7777", "No faction", ""),
 			mockTornScenario: "status_offline",
 			expectNoLog:      true,
 			expectedInLog:    "",
 		},
 		{
 			name:             "Success - Status Any",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=8888)"},{"name":"Player","value":"TestUser [8888]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "8888", "No faction", ""),
 			mockTornScenario: "status_offline", // Contract is ANY, so offline should still succeed
 			expectedInLog:    "Player Contract",
 		},
 		{
 			name:             "Success - Chance Failure (Failed to Revive)",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=10001)"},{"name":"Player","value":"TestUser [10001]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "10001", "No faction", ""),
 			mockTornScenario: "chance_fail", // Script sees "failed to revive" and returns success
 			expectedInLog:    "TestUser,10001,regular,Torn,No faction",
 		},
 		{
 			name:             "Fail - DOM Traveling Hospital",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=10002)"},{"name":"Player","value":"TestUser [10002]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "10002", "No faction", ""),
 			mockTornScenario: "traveling_hospital",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - DOM Traveling Country",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=10003)"},{"name":"Player","value":"TestUser [10003]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "10003", "No faction", ""),
 			mockTornScenario: "traveling_country",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - DOM Okay",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=10004)"},{"name":"Player","value":"TestUser [10004]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "10004", "No faction", ""),
 			mockTornScenario: "okay",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - Unfamiliar State",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=10005)"},{"name":"Player","value":"TestUser [10005]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "10005", "No faction", ""),
 			mockTornScenario: "unfamiliar",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - Cache Expired",
-			payload:          `{"channel_id":"111","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=10006)"},{"name":"Player","value":"TestUser [10006]"},{"name":"Faction","value":"No faction"},{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`,
+			payload:          makeTestPayload("Regular Revive Request", "10006", "No faction", ""),
 			mockTornScenario: "hang", // We'll intercept this and manually verify cache logic
 			expectNoLog:      true,
 		},
