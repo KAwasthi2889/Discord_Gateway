@@ -29,15 +29,15 @@ func parseDate(dateStr *string) *time.Time {
 func (c *Client) startPeriodicRefresh() {
 	ticker := time.NewTicker(1 * time.Hour)
 	for range ticker.C {
-		c.refreshAll()
+		c.RefreshAll()
 	}
 }
 
-func (c *Client) refreshAll() {
+func (c *Client) RefreshAll() bool {
 	slog.Debug("Refreshing Nuke API Shitlist and Contracts data...")
 
-	newShitlistPlayers := make(map[int]bool)
-	newShitlistFactions := make(map[int]bool)
+	newShitlistPlayers := make(map[int][]int)
+	newShitlistFactions := make(map[int]struct{})
 	newFactionContracts := make(map[int]ContractData)
 	newPlayerContracts := make(map[int]ContractData)
 
@@ -46,15 +46,53 @@ func (c *Client) refreshAll() {
 	// Fetch Shitlist
 	err := c.fetchPaginated(c.baseURL+"/shit-lists", func(item json.RawMessage) {
 		var entry struct {
-			PlayerID  *int `json:"playerId"`
-			FactionID *int `json:"factionId"`
+			PlayerID           *int        `json:"playerId"`
+			FactionID          *int        `json:"factionId"`
+			ShitListCategoryID *int        `json:"shitListCategoryId"`
+			IsFactionBan       interface{} `json:"isFactionBan"`
+			IsApproved         interface{} `json:"isApproved"`
 		}
 		if err := json.Unmarshal(item, &entry); err == nil {
-			if entry.PlayerID != nil {
-				newShitlistPlayers[*entry.PlayerID] = true
+			if entry.ShitListCategoryID != nil && *entry.ShitListCategoryID == 5 {
+				return // skip Nuke Family entirely
 			}
-			if entry.FactionID != nil {
-				newShitlistFactions[*entry.FactionID] = true
+			
+			catID := 0
+			if entry.ShitListCategoryID != nil {
+				catID = *entry.ShitListCategoryID
+			}
+
+			addUnique := func(slice []int, val int) []int {
+				for _, v := range slice {
+					if v == val {
+						return slice
+					}
+				}
+				return append(slice, val)
+			}
+
+			parseBool := func(v interface{}) bool {
+				switch val := v.(type) {
+				case bool:
+					return val
+				case float64:
+					return val != 0
+				case string:
+					return val == "1" || val == "true"
+				}
+				return false
+			}
+
+			if !parseBool(entry.IsApproved) {
+				return // Drop unapproved entries
+			}
+
+			if entry.PlayerID != nil {
+				newShitlistPlayers[*entry.PlayerID] = addUnique(newShitlistPlayers[*entry.PlayerID], catID)
+			}
+			
+			if parseBool(entry.IsFactionBan) && entry.FactionID != nil {
+				newShitlistFactions[*entry.FactionID] = struct{}{}
 			}
 		}
 	})
@@ -132,7 +170,7 @@ func (c *Client) refreshAll() {
 
 	if !success {
 		slog.Warn("Nuke API refresh encountered errors, retaining existing cached data.")
-		return
+		return false
 	}
 
 	c.mu.Lock()
@@ -148,6 +186,7 @@ func (c *Client) refreshAll() {
 		"faction_contracts", len(c.factionContracts),
 		"player_contracts", len(c.playerContracts),
 	)
+	return true
 }
 
 // fetchPaginated handles endpoints that return standard Laravel-style pagination.

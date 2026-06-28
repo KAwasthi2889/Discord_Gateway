@@ -33,16 +33,18 @@ func TestParseDate(t *testing.T) {
 
 func TestClient_IsShitlisted(t *testing.T) {
 	c := NewClient("token")
-	c.shitlistPlayers = map[int]bool{123: true}
-	c.shitlistFactions = map[int]bool{456: true}
+	c.shitlistPlayers = map[int][]int{123: {3}}
+	c.shitlistFactions = map[int]struct{}{456: {}}
 
-	if isShitlisted, slType := c.IsShitlisted(123, 0); !isShitlisted || slType != "player" {
-		t.Error("Expected player 123 to be shitlisted")
+	playerCats := c.GetShitlistCategories(123)
+	if len(playerCats) == 0 || playerCats[0] != 3 {
+		t.Error("Expected player 123 to be shitlisted with category 3")
 	}
-	if isShitlisted, slType := c.IsShitlisted(0, 456); !isShitlisted || slType != "faction" {
+	if !c.IsFactionBanned(456) {
 		t.Error("Expected faction 456 to be shitlisted")
 	}
-	if isShitlisted, _ := c.IsShitlisted(999, 999); isShitlisted {
+	pcats := c.GetShitlistCategories(999)
+	if len(pcats) > 0 {
 		t.Error("Expected 999 not to be shitlisted")
 	}
 }
@@ -85,7 +87,8 @@ func TestClient_GetContract(t *testing.T) {
 
 func TestClient_Persistence(t *testing.T) {
 	c := NewClient("token")
-	c.shitlistPlayers = map[int]bool{1: true}
+	c.shitlistPlayers = map[int][]int{1: {3}}
+	c.shitlistFactions = map[int]struct{}{555: {}}
 	c.playerContracts = map[int]ContractData{
 		1: {MinReviveChance: 50, Note: "Test"},
 	}
@@ -102,8 +105,12 @@ func TestClient_Persistence(t *testing.T) {
 		t.Fatalf("Failed to load from disk: %v", err)
 	}
 
-	if isShitlisted, _ := c2.IsShitlisted(1, 0); !isShitlisted {
+	pcats := c2.GetShitlistCategories(1)
+	if len(pcats) == 0 {
 		t.Error("Expected shitlist to be loaded")
+	}
+	if !c2.IsFactionBanned(555) {
+		t.Error("Expected faction ban to be loaded")
 	}
 	if _, ok := c2.GetContract(1, 0); !ok {
 		t.Error("Expected player contract to be loaded")
@@ -116,7 +123,9 @@ func TestClient_API_Refresh(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
-				{"playerId": 111},
+				{"playerId": 111, "isApproved": true, "shitListCategoryId": 2},
+				{"playerId": 222, "isApproved": false, "shitListCategoryId": 2},
+				{"factionId": 777, "isApproved": true, "isFactionBan": true, "shitListCategoryId": 1},
 			},
 		})
 	})
@@ -143,10 +152,18 @@ func TestClient_API_Refresh(t *testing.T) {
 	c := NewClient("token")
 	c.SetBaseURL(server.URL + "/api")
 
-	c.refreshAll()
+	c.RefreshAll()
 
-	if isShitlisted, _ := c.IsShitlisted(111, 0); !isShitlisted {
+	pcats := c.GetShitlistCategories(111)
+	if len(pcats) == 0 {
 		t.Error("Expected player 111 to be shitlisted")
+	}
+	pcats2 := c.GetShitlistCategories(222)
+	if len(pcats2) > 0 {
+		t.Error("Expected player 222 NOT to be shitlisted (unapproved)")
+	}
+	if !c.IsFactionBanned(777) {
+		t.Error("Expected faction 777 to be globally banned")
 	}
 	if _, ok := c.GetContract(0, 222); !ok {
 		t.Error("Expected faction 222 contract")

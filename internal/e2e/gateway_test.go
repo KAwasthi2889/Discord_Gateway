@@ -25,7 +25,7 @@ func setupTestEnvironment(t *testing.T) (*nuke.Client, *httptest.Server) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/shit-lists", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"data":[{"playerId":9999},{"factionId":8888}]}`))
+		w.Write([]byte(`{"data":[{"playerId":9999,"isApproved":true,"shitListCategoryId":2},{"factionId":8888,"isApproved":true,"isFactionBan":true,"shitListCategoryId":1}]}`))
 	})
 	mux.HandleFunc("/api/contracts/get_contracts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

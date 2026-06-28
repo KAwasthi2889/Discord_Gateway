@@ -6,8 +6,8 @@ import (
 )
 
 type cacheData struct {
-	ShitlistPlayers  map[int]bool         `json:"shitlist_players"`
-	ShitlistFactions map[int]bool         `json:"shitlist_factions"`
+	ShitlistPlayers  map[int][]int        `json:"shitlist_players"`
+	ShitlistFactions []int                `json:"shitlist_factions"`
 	FactionContracts map[int]ContractData `json:"faction_contracts"`
 	PlayerContracts  map[int]ContractData `json:"player_contracts"`
 }
@@ -18,9 +18,14 @@ func (c *Client) SaveToDisk(path string) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	factionList := make([]int, 0, len(c.shitlistFactions))
+	for fID := range c.shitlistFactions {
+		factionList = append(factionList, fID)
+	}
+
 	data := cacheData{
 		ShitlistPlayers:  c.shitlistPlayers,
-		ShitlistFactions: c.shitlistFactions,
+		ShitlistFactions: factionList,
 		FactionContracts: c.factionContracts,
 		PlayerContracts:  c.playerContracts,
 	}
@@ -29,7 +34,11 @@ func (c *Client) SaveToDisk(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, bytes, 0644)
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, bytes, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 // LoadFromDisk reads a serialized JSON cache from the specified path
@@ -52,7 +61,10 @@ func (c *Client) LoadFromDisk(path string) error {
 		c.shitlistPlayers = data.ShitlistPlayers
 	}
 	if data.ShitlistFactions != nil {
-		c.shitlistFactions = data.ShitlistFactions
+		c.shitlistFactions = make(map[int]struct{})
+		for _, fID := range data.ShitlistFactions {
+			c.shitlistFactions[fID] = struct{}{}
+		}
 	}
 	if data.FactionContracts != nil {
 		c.factionContracts = data.FactionContracts

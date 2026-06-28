@@ -22,8 +22,8 @@ type Client struct {
 	baseURL    string
 
 	mu               sync.RWMutex
-	shitlistPlayers  map[int]bool
-	shitlistFactions map[int]bool
+	shitlistPlayers  map[int][]int
+	shitlistFactions map[int]struct{}
 	factionContracts map[int]ContractData
 	playerContracts  map[int]ContractData
 }
@@ -35,8 +35,8 @@ func NewClient(token string) *Client {
 		token:            token,
 		httpClient:       &http.Client{Timeout: 10 * time.Second},
 		baseURL:          "https://nuke.family/api",
-		shitlistPlayers:  make(map[int]bool),
-		shitlistFactions: make(map[int]bool),
+		shitlistPlayers:  make(map[int][]int),
+		shitlistFactions: make(map[int]struct{}),
 		factionContracts: make(map[int]ContractData),
 		playerContracts:  make(map[int]ContractData),
 	}
@@ -58,28 +58,27 @@ func (c *Client) LoadOrFetch(cachePath string) {
 
 	err := c.LoadFromDisk(cachePath)
 	if err != nil {
-		c.refreshAll()
+		c.RefreshAll()
 	}
 
 	go c.startPeriodicRefresh()
 }
-
-// IsShitlisted checks if a given player ID or faction ID is on the active shitlist.
-// It returns a boolean indicating if they are shitlisted, and a string indicating
-// the reason ("player" or "faction").
-func (c *Client) IsShitlisted(playerID, factionID int) (bool, string) {
+// GetShitlistCategories returns the categories a player is shitlisted under.
+func (c *Client) GetShitlistCategories(playerID int) []int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	if c.shitlistPlayers[playerID] {
-		return true, "player"
-	}
-	if c.shitlistFactions[factionID] {
-		return true, "faction"
-	}
-	return false, ""
+	return c.shitlistPlayers[playerID]
 }
 
+// IsFactionBanned returns true if the faction is globally banned.
+func (c *Client) IsFactionBanned(factionID int) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	_, banned := c.shitlistFactions[factionID]
+	return banned
+}
 func (c *Client) isContractActive(contract ContractData) bool {
 	now := time.Now().UTC()
 	if contract.StartDate != nil && now.Before(*contract.StartDate) {

@@ -162,15 +162,26 @@ func (h *Handler) OnMessageCreate(data []byte) {
 			factionIDInt, _ := strconv.Atoi(ExtractFactionID(data))
 
 			shitlistTargetXID := xidInt
-			shitlistTargetXIDStr := xid
-			if requesterXIDStr := ExtractRequesterXID(data); requesterXIDStr != "" {
-				if reqInt, err := strconv.Atoi(requesterXIDStr); err == nil {
-					shitlistTargetXID = reqInt
-					shitlistTargetXIDStr = requesterXIDStr
+
+			// Rule 1: NO MATTER WHAT check on the original target.
+			// If target faction is globally banned, block unconditionally.
+			if h.nukeClient.IsFactionBanned(factionIDInt) {
+				slog.Info("Request dropped silently, target is strictly shitlisted (faction ban)", "xid", xid)
+				return
+			}
+			
+			// check if it's an "on behalf of" request for remaining checks
+			if reqStr := ExtractRequesterXID(data); reqStr != "" {
+				if reqInt, err := strconv.Atoi(reqStr); err == nil {
+					// Only use requester if it's different from the target
+					if reqStr != xid {
+						// Overwrite the shitlist target to be the requester
+						shitlistTargetXID = reqInt
+					}
 				}
 			}
 
-			if h.checkShitlist(shitlistTargetXID, factionIDInt, shitlistTargetXIDStr) {
+			if h.checkShitlist(shitlistTargetXID) {
 				return
 			}
 
@@ -205,17 +216,58 @@ func (h *Handler) OnMessageCreate(data []byte) {
 	}
 }
 
-func (h *Handler) checkShitlist(xidInt, factionIDInt int, xid string) bool {
-	if h.nukeClient != nil {
-		if isShitlisted, slType := h.nukeClient.IsShitlisted(xidInt, factionIDInt); isShitlisted {
-			if slType == "faction" && h.cfg.IgnoreFactionShitlist {
-				slog.Info("Ignoring faction shitlist", "xid", xid, "factionID", factionIDInt)
-			} else {
-				slog.Info("Request dropped silently, target is on shitlist", "xid", xid)
-				return true
+// checkShitlist performs configurable evaluation of shitlist categories on a target.
+func (h *Handler) checkShitlist(xidInt int) bool {
+	playerCats := h.nukeClient.GetShitlistCategories(xidInt)
+	if len(playerCats) == 0 {
+		return false // Not shitlisted
+	}
+
+	// Load configuration to check dynamic categories
+	slCfg, err := config.LoadShitlistConfig()
+	if err != nil {
+		slog.Warn("Failed to load shitlist config, defaulting to block", "error", err)
+		slCfg = &config.ShitlistConfig{}
+	}
+
+	isAllowed := func(cats []int) bool {
+		for _, cat := range cats {
+			// Rule 2 check is handled in API parse (cat 5 is skipped), but we check explicitly to be safe
+			if cat == 5 {
+				continue
+			}
+
+			// Cat 3 (Revive No-Payment) is ALWAYS blocked for the evaluated person
+			if cat == 3 {
+				return false
+			}
+
+			// Rule 3 checks
+			var allowed bool
+			switch cat {
+			case 1, 2:
+				allowed = slCfg.AllowBuyMugger
+			case 4:
+				allowed = slCfg.AllowAbsoluteScumLords
+			case 6:
+				allowed = slCfg.AllowOther
+			default:
+				// As requested, treat unknown as 6
+				allowed = slCfg.AllowOther
+			}
+
+			if !allowed {
+				return false // blocked
 			}
 		}
+		return true // all categories allowed
 	}
+
+	if !isAllowed(playerCats) {
+		slog.Info("Request dropped silently due to shitlist (player)", "xid", xidInt)
+		return true // drop
+	}
+
 	return false
 }
 
