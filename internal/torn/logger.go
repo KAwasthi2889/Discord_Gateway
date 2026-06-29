@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/goccy/go-json"
 
@@ -104,6 +105,7 @@ func ExtractRecord(data []byte) *ReviveRecord {
 // the expensive reflection-based JSON unmarshaling here, the critical event loop
 // remains unblocked.
 type MessageLogger struct {
+	mu   sync.Mutex
 	file *os.File
 	csv  *csv.Writer
 }
@@ -137,6 +139,9 @@ func (l *MessageLogger) Log(data []byte, contractNote string) {
 		return
 	}
 	rec.ContractNote = contractNote
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	if err := l.csv.Write(rec.ToCSVRow()); err != nil {
 		slog.Error("Failed to write CSV record", "error", err)

@@ -1,6 +1,7 @@
 package torn
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 	"time"
@@ -26,7 +27,7 @@ type PayloadCache struct {
 
 // NewPayloadCache initializes a new thread-safe cache and starts the background
 // cleanup routine.
-func NewPayloadCache(timeout time.Duration, tickerInterval time.Duration) *PayloadCache {
+func NewPayloadCache(ctx context.Context, timeout time.Duration, tickerInterval time.Duration) *PayloadCache {
 	if tickerInterval == 0 {
 		tickerInterval = 10 * time.Second
 	}
@@ -35,7 +36,7 @@ func NewPayloadCache(timeout time.Duration, tickerInterval time.Duration) *Paylo
 		timeout: timeout,
 		ticker:  tickerInterval,
 	}
-	go pc.cleanupRoutine()
+	go pc.cleanupRoutine(ctx)
 	return pc
 }
 
@@ -64,19 +65,25 @@ func (pc *PayloadCache) Pop(xid string) ([]byte, string, bool) {
 
 // cleanupRoutine runs periodically to evict payloads that have exceeded the timeout.
 // Evicted payloads are logged to the console as failures.
-func (pc *PayloadCache) cleanupRoutine() {
+func (pc *PayloadCache) cleanupRoutine(ctx context.Context) {
 	ticker := time.NewTicker(pc.ticker)
-	for range ticker.C {
-		pc.mu.Lock()
-		now := time.Now()
-		for xid, item := range pc.items {
-			if now.Sub(item.timestamp) > pc.timeout {
-				delete(pc.items, xid)
-				// We don't hold the lock while logging, but since we're just
-				// printing strings, it's safe to do this here.
-				slog.Warn("Timeout / No response from browser for XID, flushing it", "xid", xid)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			pc.mu.Lock()
+			now := time.Now()
+			for xid, item := range pc.items {
+				if now.Sub(item.timestamp) > pc.timeout {
+					delete(pc.items, xid)
+					// We don't hold the lock while logging, but since we're just
+					// printing strings, it's safe to do this here.
+					slog.Warn("Timeout / No response from browser for XID, flushing it", "xid", xid)
+				}
 			}
+			pc.mu.Unlock()
+		case <-ctx.Done():
+			return
 		}
-		pc.mu.Unlock()
 	}
 }

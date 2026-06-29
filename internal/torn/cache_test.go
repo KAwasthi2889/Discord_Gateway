@@ -1,13 +1,14 @@
 package torn
 
 import (
+	"context"
 	"testing"
 	"time"
 )
 
 func TestPayloadCache_Expiration(t *testing.T) {
 	// 50ms timeout, 10ms ticker interval
-	cache := NewPayloadCache(50*time.Millisecond, 10*time.Millisecond)
+	cache := NewPayloadCache(context.Background(), 50*time.Millisecond, 10*time.Millisecond)
 
 	cache.Add("test_xid", []byte("payload"), "contract_note")
 

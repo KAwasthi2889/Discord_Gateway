@@ -1,6 +1,8 @@
 package torn
 
 import (
+	"os"
+	"sync"
 	"testing"
 )
 
@@ -98,4 +100,27 @@ func TestIsTornCountry(t *testing.T) {
 	if IsTornCountry(invalid) {
 		t.Errorf("Expected IsTornCountry to return false for invalid payload")
 	}
+}
+
+func TestMessageLogger_Concurrent(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "logger_test_*.csv")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	logger := NewMessageLogger(tmpFile)
+
+	mockPayload := []byte(`{"embeds": [{"title": "Regular Revive Request", "fields": [{"name": "Player", "value": "TestPlayer"}, {"name": "Country", "value": "Torn"}]}]}`)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			logger.Log(mockPayload, "TestNote")
+		}()
+	}
+
+	wg.Wait()
 }

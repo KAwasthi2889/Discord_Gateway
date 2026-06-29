@@ -81,6 +81,8 @@ func (m *Multiplexer) ServeReplicas(ctx context.Context, listener net.Listener) 
 			delete(m.replicas, r)
 			m.replicasMu.Unlock()
 
+			close(r.ch)
+
 			slog.Debug("Multiplex: Replica disconnected", "addr", r.conn.RemoteAddr().String())
 			r.conn.Close()
 		}(rep)
