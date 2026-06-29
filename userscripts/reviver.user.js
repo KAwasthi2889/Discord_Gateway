@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
+// @version      1.2.1
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -113,7 +113,7 @@
 
         const match = pageText.match(/(\d+(?:\.\d+)?)% chance of success/);
         const chance = match ? parseFloat(match[1]) : null;
-        return { chance };
+        return { chance, text: pageText.trim() };
     }
 
     const watchForSuccessAndClose = () => {
@@ -178,7 +178,7 @@
                     logToGateway('fail', `[UserScript] Skipped auto-revive, chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
                 }
             } else {
-                logToGateway('fail', '[UserScript] Could not determine success chance.');
+                logToGateway('fail', `[UserScript] Could not determine success chance. Raw text: "${reviveInfo.text}"`);
             }
         }
     }
