@@ -24,4 +24,46 @@ jobs:
     - name: Test
       run: go test -v -race ./...
 
+  userscript-version-check:
+    runs-on: ubuntu-latest
 
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2
+
+    - name: Check userscript version bump
+      run: |
+        # Determine the base commit to diff against.
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          BASE="${{ github.event.pull_request.base.sha }}"
+        else
+          BASE="HEAD~1"
+        fi
+
+        FAILED=0
+        for file in $(git diff --name-only "$BASE" HEAD -- 'userscripts/*.user.js'); do
+          # Skip deleted files
+          [ -f "$file" ] || continue
+
+          OLD_VER=$(git show "$BASE:$file" 2>/dev/null | grep -oP '// @version\s+\K\S+' || echo "")
+          NEW_VER=$(grep -oP '// @version\s+\K\S+' "$file" || echo "")
+
+          if [ -z "$OLD_VER" ]; then
+            echo "✅ $file is new (version: $NEW_VER)"
+            continue
+          fi
+
+          if [ "$OLD_VER" = "$NEW_VER" ]; then
+            echo "❌ $file was modified but @version was not bumped (still $OLD_VER)"
+            FAILED=1
+          else
+            echo "✅ $file version bumped: $OLD_VER → $NEW_VER"
+          fi
+        done
+
+        if [ "$FAILED" -ne 0 ]; then
+          echo ""
+          echo "::error::Userscript(s) were modified without a @version bump. Please update the version."
+          exit 1
+        fi
