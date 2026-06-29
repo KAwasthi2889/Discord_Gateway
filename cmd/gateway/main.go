@@ -81,7 +81,7 @@ func main() {
 	client := discord.NewClient(cfg)
 
 	// Initialize the domain-specific logic handler for Torn events.
-	tornHandler := torn.NewHandler(cfg, logFile, userDir, nukeClient)
+	tornHandler := torn.NewHandler(ctx, cfg, logFile, userDir, nukeClient)
 
 	// Immediately check quota on startup
 	if !tornHandler.Quota().Allow() {

@@ -70,7 +70,7 @@ func IsPaidRegularRevive(cfg *config.Config, data []byte) (bool, string) {
 // Returns the complete URL string and the raw XID if found, or empty strings if omitted or malformed.
 // Because it slices the original byte array, it maintains zero allocations until
 // the final string cast.
-func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, data []byte) (string, string) {
+func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, callbackToken string, data []byte) (string, string) {
 	idx := bytes.Index(data, tornProfilePrefix)
 	if idx == -1 {
 		return "", ""
@@ -101,7 +101,8 @@ func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, data []byte)
 	//   1. This tab was opened by the gateway (autorevive trigger)
 	//   2. The configured minimum age threshold (0 means bypass)
 	//   3. Where to send the success callback
-	link := string(data[idx:end]) + "#autorevive=" + strconv.Itoa(minAge) + "&cbport=" + strconv.Itoa(callbackPort)
+	//   4. The auth token to prevent localhost SSRF/injection
+	link := string(data[idx:end]) + "#autorevive=" + strconv.Itoa(minAge) + "&cbport=" + strconv.Itoa(callbackPort) + "&token=" + callbackToken
 	return link, xidStr
 }
 

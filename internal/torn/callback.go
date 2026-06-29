@@ -1,6 +1,8 @@
 package torn
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,13 +14,21 @@ import (
 // It listens for GET requests from the userscript indicating success or failure.
 // If onEmergencyShutdown is provided, it is invoked when out of energy is detected.
 // It also provides a PongReceived channel to verify the userscript is active.
-func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, onEmergencyShutdown func()) (int, chan struct{}, error) {
+// Returns the port, the pong channel, the generated auth token, and any error.
+func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, onEmergencyShutdown func()) (int, chan struct{}, string, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, "", err
 	}
 
 	port := listener.Addr().(*net.TCPAddr).Port
+
+	// Generate a secure random token
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return 0, nil, "", err
+	}
+	token := hex.EncodeToString(tokenBytes)
 
 	pongReceived := make(chan struct{}, 1)
 
@@ -40,6 +50,11 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 
 	mux.HandleFunc("/revive", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if r.URL.Query().Get("token") != token {
+			slog.Warn("Callback unauthorized", "ip", r.RemoteAddr)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		xid := r.URL.Query().Get("xid")
 		status := r.URL.Query().Get("status")
 		reason := r.URL.Query().Get("reason")
@@ -82,11 +97,11 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 	})
 
 	go func() {
-		if err := http.Serve(listener, mux); err != nil {
-			slog.Error("Callback server fatal error", "error", err)
+		if err := http.Serve(listener, mux); err != nil && err != http.ErrServerClosed {
+			slog.Error("Callback server crashed", "error", err)
 		}
 	}()
 
-	slog.Debug("Callback server listening", "host", "localhost", "port", port)
-	return port, pongReceived, nil
+	slog.Info("Callback server started", "port", port, "token", token)
+	return port, pongReceived, token, nil
 }

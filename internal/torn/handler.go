@@ -2,9 +2,11 @@ package torn
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"discord_gateway/internal/config"
@@ -16,10 +18,10 @@ import (
 // optimized extraction, rate-limiting, and logging subsystems.
 type Handler struct {
 	// cfg holds the active configuration. It is swapped safely during hot-reloads.
-	cfg *config.Config
+	cfg atomic.Pointer[config.Config]
 
 	// browser orchestrates the rate-limited execution of the host OS web browser.
-	browser *BrowserLauncher
+	browser atomic.Pointer[BrowserLauncher]
 
 	// logger persists matched payloads to disk asynchronously.
 	logger *MessageLogger
@@ -36,6 +38,9 @@ type Handler struct {
 	// callbackPort is the random OS-assigned port for the JS → Go success callback.
 	callbackPort int
 
+	// callbackToken is the secure auth token for the callback server.
+	callbackToken string
+
 	// globalRateLimiter enforces a strict maximum on the total number of tabs opened per minute.
 	globalRateLimiter *RateLimiter
 
@@ -46,46 +51,50 @@ type Handler struct {
 // NewHandler initializes and returns a new Torn orchestrator.
 // It wires up the necessary sub-components, such as the rate limiter, the CSV logger,
 // the daily quota system, and the HTTP callback server.
-func NewHandler(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client) *Handler {
+func NewHandler(ctx context.Context, cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client) *Handler {
 	quota := NewDailyQuota(cfg.DailyQuota, userDir)
 	logger := NewMessageLogger(logFile)
-	cache := NewPayloadCache(25*time.Second, 0)
+	cache := NewPayloadCache(ctx, 25*time.Second, 0)
 
-	cbPort, pongChan, err := StartCallbackServer(quota, cache, logger, nil)
+	cbPort, pongChan, cbToken, err := StartCallbackServer(quota, cache, logger, nil)
 	if err != nil {
 		slog.Warn("Callback server failed to start", "error", err)
 		slog.Info("Daily quota will still gate browser launches, but success tracking is disabled")
 	}
 
-	return &Handler{
-		cfg:               cfg,
-		browser:           NewBrowserLauncher(cfg),
+	h := &Handler{
 		logger:            logger,
 		quota:             quota,
 		cache:             cache,
 		nukeClient:        nukeClient,
 		callbackPort:      cbPort,
+		callbackToken:     cbToken,
 		globalRateLimiter: NewRateLimiter(15, time.Minute),
 		pongChan:          pongChan,
 	}
+	h.cfg.Store(cfg)
+	h.browser.Store(NewBrowserLauncher(cfg))
+	return h
 }
 
 // NewHandlerForTest allows test injection of mocked or explicitly configured dependencies
 // without automatically spawning side-effect goroutines like StartCallbackServer.
-func NewHandlerForTest(cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client, quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, callbackPort int, browserLauncher func(url string)) *Handler {
+func NewHandlerForTest(ctx context.Context, cfg *config.Config, logFile *os.File, userDir string, nukeClient *nuke.Client, quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, callbackPort int, callbackToken string, browserLauncher func(url string)) *Handler {
 	b := NewBrowserLauncher(cfg)
 	b.Launcher = browserLauncher
-	return &Handler{
-		cfg:               cfg,
-		browser:           b,
+	h := &Handler{
 		logger:            logger,
 		quota:             quota,
 		cache:             cache,
 		nukeClient:        nukeClient,
 		callbackPort:      callbackPort,
+		callbackToken:     callbackToken,
 		globalRateLimiter: NewRateLimiter(15, time.Minute),
 		pongChan:          make(chan struct{}, 1),
 	}
+	h.cfg.Store(cfg)
+	h.browser.Store(b)
+	return h
 }
 
 // UpdateConfig safely swaps the configuration pointer during a hot-reload event.
@@ -95,8 +104,8 @@ func NewHandlerForTest(cfg *config.Config, logFile *os.File, userDir string, nuk
 // The daily quota limit is updated but the used count is preserved to prevent
 // gaming the quota by editing .env mid-day.
 func (h *Handler) UpdateConfig(cfg *config.Config) {
-	h.cfg = cfg
-	h.browser = NewBrowserLauncher(cfg)
+	h.cfg.Store(cfg)
+	h.browser.Store(NewBrowserLauncher(cfg))
 	h.quota.UpdateLimit(cfg.DailyQuota)
 }
 
@@ -125,7 +134,7 @@ func (h *Handler) PongChan() chan struct{} {
 //  3. OS Interaction: Dispatches an asynchronous browser launch if the rate limit permits.
 //  4. Data Persistence: Offloads the heavy JSON unmarshaling to a background logging routine.
 func (h *Handler) OnMessageCreate(data []byte) {
-	cfg := h.cfg
+	cfg := h.cfg.Load()
 
 	// Stage 1: Discard events not originating from our target channels.
 	if !isTargetChannel(cfg, data) {
@@ -156,7 +165,7 @@ func (h *Handler) OnMessageCreate(data []byte) {
 			return
 		}
 
-		if link, xid := ExtractProfileLinkAndXID(h.cfg, h.callbackPort, data); link != "" {
+		if link, xid := ExtractProfileLinkAndXID(cfg, h.callbackPort, h.callbackToken, data); link != "" {
 			// Extract IDs for Nuke API checks
 			xidInt, _ := strconv.Atoi(xid)
 			factionIDInt, _ := strconv.Atoi(ExtractFactionID(data))
@@ -169,7 +178,7 @@ func (h *Handler) OnMessageCreate(data []byte) {
 				slog.Info("Request dropped silently, target is strictly shitlisted (faction ban)", "xid", xid)
 				return
 			}
-			
+
 			// check if it's an "on behalf of" request for remaining checks
 			if reqStr := ExtractRequesterXID(data); reqStr != "" {
 				if reqInt, err := strconv.Atoi(reqStr); err == nil {
@@ -192,7 +201,7 @@ func (h *Handler) OnMessageCreate(data []byte) {
 
 			link, contractNote := h.buildContractUrl(link, xidInt, factionIDInt)
 
-			if h.browser.Open(link, xid) {
+			if h.browser.Load().Open(link, xid) {
 				// Stage 4: Cache payload and wait for callback (Deferred Allocation)
 				// Copy the payload to avoid a data race with the websocket read buffer.
 				logCopy := make([]byte, len(data))

@@ -1,6 +1,7 @@
 package torn
 
 import (
+	"context"
 	"discord_gateway/internal/config"
 	"discord_gateway/internal/nuke"
 	"fmt"
@@ -30,14 +31,14 @@ func TestHandler_UpdateConfig(t *testing.T) {
 	quota := NewDailyQuota(10, dir)
 
 	h := &Handler{
-		cfg:   cfg,
 		quota: quota,
 	}
+	h.cfg.Store(cfg)
 
 	newCfg := &config.Config{DailyQuota: 20}
 	h.UpdateConfig(newCfg)
 
-	if h.cfg.DailyQuota != 20 {
+	if h.cfg.Load().DailyQuota != 20 {
 		t.Error("Expected config to be updated")
 	}
 }
@@ -63,7 +64,7 @@ func TestHandler_QuotaRejection(t *testing.T) {
 		launched = true
 	}
 
-	h := NewHandlerForTest(cfg, f, dir, nukeClient, quota, NewPayloadCache(1*time.Second, 0), NewMessageLogger(f), 8080, browserOverride)
+	h := NewHandlerForTest(context.Background(), cfg, f, dir, nukeClient, quota, NewPayloadCache(context.Background(), 1*time.Second, 0), NewMessageLogger(f), 8080, "test_token", browserOverride)
 
 	payload := []byte(`{"channel_id":"123","embeds":[{"title":"Regular Revive Request","fields":[{"value":"Torn","name":"Country"}]}]}`)
 
@@ -94,7 +95,7 @@ func TestHandler_GlobalRateLimit(t *testing.T) {
 		launchCount++
 	}
 
-	h := NewHandlerForTest(cfg, f, dir, nukeClient, quota, NewPayloadCache(1*time.Second, 0), NewMessageLogger(f), 8080, browserOverride)
+	h := NewHandlerForTest(context.Background(), cfg, f, dir, nukeClient, quota, NewPayloadCache(context.Background(), 1*time.Second, 0), NewMessageLogger(f), 8080, "test_token", browserOverride)
 
 	// Fire 16 requests with different XIDs
 	for i := 1; i <= 16; i++ {

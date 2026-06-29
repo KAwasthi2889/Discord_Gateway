@@ -16,12 +16,12 @@ func TestExtractProfileLinkAndXID(t *testing.T) {
 	}{
 		{
 			data:         []byte(`"value":"[Link](https://www.torn.com/profiles.php?XID=12345)"`),
-			expectedLink: "https://www.torn.com/profiles.php?XID=12345#autorevive=10&cbport=8080",
+			expectedLink: "https://www.torn.com/profiles.php?XID=12345#autorevive=10&cbport=8080&token=test_token",
 			expectedXID:  "12345",
 		},
 		{
 			data:         []byte(`"value":"[Link](https://www.torn.com/profiles.php?XID=9876543) [User]"`),
-			expectedLink: "https://www.torn.com/profiles.php?XID=9876543#autorevive=10&cbport=8080",
+			expectedLink: "https://www.torn.com/profiles.php?XID=9876543#autorevive=10&cbport=8080&token=test_token",
 			expectedXID:  "9876543",
 		},
 		{
@@ -32,7 +32,7 @@ func TestExtractProfileLinkAndXID(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		link, xid := ExtractProfileLinkAndXID(cfg, 8080, tt.data)
+		link, xid := ExtractProfileLinkAndXID(cfg, 8080, "test_token", tt.data)
 		if link != tt.expectedLink {
 			t.Errorf("Expected link %q, got %q", tt.expectedLink, link)
 		}

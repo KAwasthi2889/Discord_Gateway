@@ -257,19 +257,19 @@ func TestGatewayE2E(t *testing.T) {
 
 				quota := torn.NewDailyQuota(cfg.DailyQuota, cfgDir)
 				logger := torn.NewMessageLogger(logFile)
-				cache := torn.NewPayloadCache(25*time.Second, 0)
+				cache := torn.NewPayloadCache(context.Background(), 25*time.Second, 0)
 
 				shutdownTriggered := false
 				shutdownHook := func() {
 					shutdownTriggered = true
 				}
 
-				cbPort, _, err := torn.StartCallbackServer(quota, cache, logger, shutdownHook)
+				cbPort, _, cbToken, err := torn.StartCallbackServer(quota, cache, logger, shutdownHook)
 				if err != nil {
 					t.Fatalf("Failed to start callback: %v", err)
 				}
 
-				handler := torn.NewHandlerForTest(cfg, logFile, cfgDir, nukeClient, quota, cache, logger, cbPort, browserOverride)
+				handler := torn.NewHandlerForTest(context.Background(), cfg, logFile, cfgDir, nukeClient, quota, cache, logger, cbPort, cbToken, browserOverride)
 
 				// Trigger message synchronously
 				handler.OnMessageCreate([]byte(tt.payload))
