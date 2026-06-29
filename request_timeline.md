@@ -74,7 +74,7 @@ This document maps the entire lifecycle of a request from Discord message arriva
   - *Failure Condition*: Watches for **5 seconds** after clicking Yes. If no message appears, calls back with fail status: `[UserScript] Success message not found within 5s.`
 - **Evaluate Message**: 
   - *Success Condition 1 (Actual Success)*: Reads "successfully revived" or `.t-green` class. Calls back with `status=success`.
-  - *Success Condition 2 (Chance Failure)*: Reads `"failed to revive"` anywhere in the text. Calls back with **`status=success`** (so Go increments the quota) and `reason=failed to revive`.
+  - *Success Condition 2 (Chance Failure)*: Reads `"attempted to revive"` and `"but failed"` anywhere in the text. Calls back with **`status=success`** (so Go increments the quota) and `reason=failed to revive`.
   - *Failure Condition*: Reads any other text. 
     - Specifically standardizes matches: `"Not enough energy"` (from "You do not have enough energy to perform this action.").
     - If it's an unfamiliar error dialog, returns the exact string of the unfamiliar error.

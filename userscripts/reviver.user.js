@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
+// @version      1.2.2
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -126,7 +126,7 @@
                 if (text.includes("chance of success")) return;
 
                 const isSuccess = responseTextEl.classList.contains('t-green') || text.includes('successfully revived');
-                const isChanceFailure = text.toLowerCase().includes('failed to revive');
+                const isChanceFailure = text.toLowerCase().includes('attempted to revive') && text.toLowerCase().includes('but failed');
 
                 if (cbport && gatewayXid) {
                     if (isSuccess) {

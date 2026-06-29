@@ -179,7 +179,7 @@ func handleProfiles(w http.ResponseWriter, r *http.Request) {
 						document.getElementById('dialog-container').innerHTML = 
 							'<div class="profile-buttons-dialog" style="display:block;">' +
 								'<div class="center-block">' +
-									'<div class="text t-red">You failed to revive the player!</div>' +
+									'<div class="text t-red">You attempted to revive ThePlayer but failed</div>' +
 								'</div>' +
 							'</div>';
 					}, 500);
