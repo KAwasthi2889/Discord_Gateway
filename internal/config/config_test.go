@@ -20,6 +20,7 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 	os.Setenv("RATE_LIMIT", "10")
 	os.Setenv("MIN_AGE_DAYS", "100")
 	os.Setenv("DAILY_QUOTA", "5")
+	os.Setenv("MIN_CHANCE", "40")
 
 	defer func() {
 		// Cleanup
@@ -31,6 +32,7 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 		os.Unsetenv("RATE_LIMIT")
 		os.Unsetenv("MIN_AGE_DAYS")
 		os.Unsetenv("DAILY_QUOTA")
+		os.Unsetenv("MIN_CHANCE")
 	}()
 
 	cfg, err := Load()
@@ -55,6 +57,9 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 	}
 	if cfg.DailyQuota != 5 {
 		t.Errorf("Expected DailyQuota 5, got %d", cfg.DailyQuota)
+	}
+	if cfg.MinChance != 40 {
+		t.Errorf("Expected MinChance 40, got %d", cfg.MinChance)
 	}
 
 	// Verify pre-computed byte slices for fast scanning
@@ -99,6 +104,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.DailyQuota != 15 {
 		t.Errorf("Expected default DailyQuota 15, got %d", cfg.DailyQuota)
+	}
+	if cfg.MinChance != 60 {
+		t.Errorf("Expected default MinChance 60, got %d", cfg.MinChance)
 	}
 }
 

@@ -45,8 +45,8 @@ type Config struct {
 	// NukeAPIToken is the API token used to authenticate with nuke.family for Contracts/Shitlist.
 	NukeAPIToken string
 
-	// IgnoreFactionShitlist determines if faction shitlist entries should be ignored.
-	IgnoreFactionShitlist bool
+	// MinChance is the default minimum revive chance percentage.
+	MinChance int
 }
 
 // GetUserDir resolves the absolute path to the current user's dedicated configuration
@@ -134,10 +134,14 @@ func Load() (*Config, error) {
 		nukeToken = os.Getenv("NUKE_API_TOKEN")
 	}
 
-	// Resolve ignore faction shitlist
-	ignoreFactionShitlistStr := envMap["IGNORE_FACTION_SHITLIST"]
-	if ignoreFactionShitlistStr == "" {
-		ignoreFactionShitlistStr = os.Getenv("IGNORE_FACTION_SHITLIST")
+	// Resolve min chance (default: 60)
+	minChanceStr := envMap["MIN_CHANCE"]
+	if minChanceStr == "" {
+		minChanceStr = os.Getenv("MIN_CHANCE")
+	}
+	minChance, err := strconv.Atoi(minChanceStr)
+	if err != nil || minChance < 0 || minChance > 100 {
+		minChance = 60
 	}
 
 	// Enforce strict validation on required configuration keys.
@@ -156,7 +160,7 @@ func Load() (*Config, error) {
 		MinAgeDays:            minAgeDays,
 		DailyQuota:            dailyQuota,
 		NukeAPIToken:          nukeToken,
-		IgnoreFactionShitlist: strings.ToLower(ignoreFactionShitlistStr) == "true",
+		MinChance:             minChance,
 	}
 
 	// Process the comma-separated channel IDs and compute the hot-path signatures.
