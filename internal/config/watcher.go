@@ -25,7 +25,6 @@ func StartWatcher(ctx context.Context, userDir string, reloaders ...ConfigReload
 	}
 
 	var reloadTimer *time.Timer
-	envPath := filepath.Join(userDir, ".env")
 
 	// Start the background monitoring routine.
 	go func() {
@@ -35,6 +34,9 @@ func StartWatcher(ctx context.Context, userDir string, reloaders ...ConfigReload
 			case event, ok := <-watcher.Events:
 				if !ok {
 					return
+				}
+				if filepath.Base(event.Name) != ".env" {
+					continue
 				}
 				// Watch for Write, Create, or Rename operations
 				if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Rename == fsnotify.Rename {
@@ -60,10 +62,10 @@ func StartWatcher(ctx context.Context, userDir string, reloaders ...ConfigReload
 		}
 	}()
 
-	if err := watcher.Add(envPath); err != nil {
-		slog.Warn("Failed to add .env to watcher, hot reload may not work", "error", err)
+	if err := watcher.Add(userDir); err != nil {
+		slog.Warn("Failed to add configuration directory to watcher, hot reload may not work", "error", err)
 	} else {
-		slog.Debug("Monitoring configuration file for hot-reloads", "path", envPath)
+		slog.Debug("Monitoring configuration directory for hot-reloads", "dir", userDir)
 	}
 
 	return nil
