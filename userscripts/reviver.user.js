@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.2.2
+// @version      1.2.3
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -34,16 +34,7 @@
     let cbtoken = "";
     let gatewayXid = new URLSearchParams(window.location.search).get("XID");
 
-    let minChanceOverride = 60; // Default
-    try {
-        const stored = localStorage.getItem('fastReviveSettings');
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed.threshold !== undefined) minChanceOverride = parsed.threshold;
-        } else {
-            localStorage.setItem('fastReviveSettings', JSON.stringify({ threshold: 60 }));
-        }
-    } catch (e) { }
+    let minChanceOverride = 60; // Default, overridden by URL hash from Go backend
     let requiredStatus = null;
     let MIN_AGE_DAYS = 365;
 
@@ -116,7 +107,7 @@
         return { chance, text: pageText.trim() };
     }
 
-    const watchForSuccessAndClose = () => {
+    const watchForSuccessAndClose = (actualChance) => {
         let successFound = false;
 
         const successObserver = new MutationObserver((m, obs) => {
@@ -132,7 +123,11 @@
                     if (isSuccess) {
                         logToGateway('success', '', gatewayXid);
                     } else if (isChanceFailure) {
-                        logToGateway('success', 'failed to revive', gatewayXid);
+                        if (actualChance < 60) {
+                            logToGateway('success', 'failed to revive', gatewayXid);
+                        } else {
+                            logToGateway('fail', 'failed to revive', gatewayXid);
+                        }
                     } else {
                         let reason = text;
                         if (text.includes("You do not have enough energy to perform this action.")) {
@@ -173,7 +168,7 @@
                 if (reviveInfo.chance >= minChanceOverride) {
                     isConfirming = true;
                     yesButton.click();
-                    watchForSuccessAndClose();
+                    watchForSuccessAndClose(reviveInfo.chance);
                 } else {
                     logToGateway('fail', `[UserScript] Skipped auto-revive, chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
                 }

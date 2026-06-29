@@ -144,7 +144,7 @@ func handleProfiles(w http.ResponseWriter, r *http.Request) {
 				this.remove();
 				
 				let chanceText = '100% chance of success';
-				if ("` + scenario + `" === "low_chance") {
+				if ("` + scenario + `" === "low_chance" || "` + scenario + `" === "low_chance_fail") {
 					chanceText = '10% chance of success';
 				}
 
@@ -174,7 +174,7 @@ func handleProfiles(w http.ResponseWriter, r *http.Request) {
 						return;
 					}
 
-				if ("` + scenario + `" === "chance_fail") {
+				if ("` + scenario + `" === "chance_fail" || "` + scenario + `" === "low_chance_fail") {
 					setTimeout(() => {
 						document.getElementById('dialog-container').innerHTML = 
 							'<div class="profile-buttons-dialog" style="display:block;">' +
