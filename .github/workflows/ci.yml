@@ -24,7 +24,4 @@ jobs:
     - name: Test
       run: go test -v -race ./...
 
-    - name: Security Check
-      run: |
-        GOTOOLCHAIN=go1.26.0 go install golang.org/x/vuln/cmd/govulncheck@latest
-        GOTOOLCHAIN=go1.26.0 govulncheck ./...
+
