@@ -78,6 +78,7 @@ func TestGatewayE2E(t *testing.T) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.DisableGPU,
 		chromedp.NoSandbox,
+		chromedp.Flag("disable-dev-shm-usage", true),
 	)
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
