@@ -97,6 +97,8 @@ func main() {
 	cmd := exec.Command("xdg-open", pingURL)
 	if err := cmd.Start(); err != nil {
 		slog.Warn("Failed to auto-launch browser for ping verification", "error", err)
+	} else {
+		go cmd.Wait()
 	}
 
 	select {
