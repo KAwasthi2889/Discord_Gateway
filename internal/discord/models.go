@@ -23,7 +23,7 @@ type Payload struct {
 
 	// Sequence is the sequence number, used for resuming sessions and heartbeating.
 	// It is only present on Opcode 0 (Dispatch) events.
-	Sequence *int32 `json:"s"`
+	Sequence *int64 `json:"s"`
 
 	// Event is the event name for Opcode 0 (e.g., "MESSAGE_CREATE").
 	Event *string `json:"t"`
@@ -46,7 +46,7 @@ type Identify struct {
 type Resume struct {
 	Token     string `json:"token"`
 	SessionID string `json:"session_id"`
-	Seq       int32  `json:"seq"`
+	Seq       int64  `json:"seq"`
 }
 
 // Ready represents the acknowledgment from Discord upon successful identification.

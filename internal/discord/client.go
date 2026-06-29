@@ -43,7 +43,7 @@ type Client struct {
 
 	// lastSequence tracks the highest sequence number received from Discord.
 	// Used for session resumption if the connection drops.
-	lastSequence atomic.Int32
+	lastSequence atomic.Int64
 
 	// ackReceived is an atomic flag indicating whether the last heartbeat was acknowledged.
 	// true = ACK received, false = Pending/Unacknowledged. Used to detect zombie TCP connections.
@@ -249,14 +249,14 @@ func (c *Client) fetchGatewayURL() (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024))
 		return "", fmt.Errorf("UNEXPECTED ERROR: HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		URL string `json:"url"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10*1024)).Decode(&result); err != nil {
 		return "", fmt.Errorf("UNEXPECTED ERROR: decode json: %w", err)
 	}
 	return result.URL, nil
