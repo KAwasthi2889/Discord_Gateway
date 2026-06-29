@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.1.5
+// @version      1.2.0
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -31,6 +31,7 @@
 
     let isConfirming = false;
     let cbport = null;
+    let cbtoken = "";
     let gatewayXid = new URLSearchParams(window.location.search).get("XID");
 
     let minChanceOverride = 60; // Default
@@ -53,10 +54,13 @@
     const portMatch = savedHash.match(/cbport=(\d+)/);
     if (portMatch) cbport = parseInt(portMatch[1], 10);
 
+    const tokenMatch = savedHash.match(/token=([a-fA-F0-9]+)/);
+    if (tokenMatch) cbtoken = tokenMatch[1];
+
     const hashMatch = savedHash.match(/autorevive=(\d+)/);
     if (hashMatch) {
         const parsedAge = parseInt(hashMatch[1], 10);
-        if (!isNaN(parsedAge) && parsedAge > 0) MIN_AGE_DAYS = parsedAge;
+        if (!isNaN(parsedAge) && parsedAge >= 0) MIN_AGE_DAYS = parsedAge;
     }
 
     const minChanceMatch = savedHash.match(/minChance=(\d+)/);
@@ -71,7 +75,7 @@
     function logToGateway(status, reason, overrideXid = null) {
         const xid = overrideXid || gatewayXid;
         if (cbport && xid) {
-            const url = `http://127.0.0.1:${cbport}/revive?xid=${xid}&status=${status}&reason=${encodeURIComponent(reason)}&_t=${Date.now()}`;
+            const url = `http://127.0.0.1:${cbport}/revive?xid=${xid}&status=${status}&reason=${encodeURIComponent(reason)}&token=${cbtoken}&_t=${Date.now()}`;
             if (typeof GM_xmlhttpRequest !== "undefined") {
                 GM_xmlhttpRequest({
                     method: "GET",
@@ -252,7 +256,7 @@
                 }
 
                 const ageDays = getPlayerAgeDays();
-                if (ageDays !== null && ageDays < MIN_AGE_DAYS) {
+                if (MIN_AGE_DAYS > 0 && ageDays !== null && ageDays < MIN_AGE_DAYS) {
                     const msg = `[UserScript] Skipped auto-revive, player age ${ageDays} days is under ${MIN_AGE_DAYS} day minimum.`;
                     logToGateway('fail', msg);
                     return;
