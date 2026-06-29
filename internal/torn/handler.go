@@ -199,7 +199,7 @@ func (h *Handler) OnMessageCreate(data []byte) {
 				return
 			}
 
-			link, contractNote := h.buildContractUrl(link, xidInt, factionIDInt)
+			link, contractNote := h.buildContractUrl(cfg, link, xidInt, factionIDInt)
 
 			if h.browser.Load().Open(link, xid) {
 				// Stage 4: Cache payload and wait for callback (Deferred Allocation)
@@ -280,15 +280,24 @@ func (h *Handler) checkShitlist(xidInt int) bool {
 	return false
 }
 
-func (h *Handler) buildContractUrl(link string, xidInt, factionIDInt int) (string, string) {
+// buildContractUrl resolves the effective revive requirements and appends them to the browser URL.
+// It sets minChance to the max of the global config and the specific player/faction contract.
+// It returns the augmented URL and any associated contract note for logging.
+func (h *Handler) buildContractUrl(cfg *config.Config, link string, xidInt, factionIDInt int) (string, string) {
 	contractNote := ""
+	effectiveMinChance := cfg.MinChance
+
 	if h.nukeClient != nil {
 		if contract, ok := h.nukeClient.GetContract(xidInt, factionIDInt); ok {
-			link += "&minChance=" + strconv.Itoa(contract.MinReviveChance)
+			if contract.MinReviveChance > effectiveMinChance {
+				effectiveMinChance = contract.MinReviveChance
+			}
 			link += "&status=" + contract.PStatus
 			contractNote = contract.Note
 		}
 	}
+	link += "&minChance=" + strconv.Itoa(effectiveMinChance)
+
 	return link, contractNote
 }
 
