@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -72,13 +73,27 @@ func TestGatewayE2E(t *testing.T) {
 		t.Fatalf("Failed to start mock torn server: %v", err)
 	}
 	defer mockCmd.Process.Kill()
-	time.Sleep(2 * time.Second) // Let it spin up
+	// Wait up to 15 seconds for mock server to be ready on port 8080
+	ready := false
+	for i := 0; i < 30; i++ {
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:8080", 500*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			ready = true
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatalf("Mock Torn server failed to start on :8080 in time")
+	}
 
 	// Create a shared headless browser instance for all parallel tests
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.DisableGPU,
 		chromedp.NoSandbox,
 		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.WSURLReadTimeout(60*time.Second), // Give Chrome 60 seconds to boot on slow CI
 	)
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(context.Background(), opts...)
 	defer cancelAlloc()
@@ -86,13 +101,19 @@ func TestGatewayE2E(t *testing.T) {
 	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
 	defer cancelBrowser()
 
+	// Pre-start the browser to avoid timeouts on the first test in slow CI environments
+	if err := chromedp.Run(browserCtx); err != nil {
+		t.Fatalf("Failed to initialize headless Chrome: %v", err)
+	}
+
 	tests := []struct {
-		name             string
-		payload          string
-		mockTornScenario string
-		expectedInLog    string // What we expect to see in records.csv
-		expectNoLog      bool   // If true, we expect the request to be dropped/rejected
-		expectShutdown   bool   // If true, we expect the emergency shutdown hook to be called
+		name              string
+		payload           string
+		mockTornScenario  string
+		expectedInLog     string // If not empty, expect this exact string in CSV log
+		expectNoLog       bool   // If true, expect NO log entry for this XID
+		expectShutdown    bool   // If true, expect process to exit on its own
+		overrideMinChance int    // If non-zero, overrides the default 60% MinChance
 	}{
 		{
 			name:             "Success - Standard Revive",
@@ -175,10 +196,17 @@ func TestGatewayE2E(t *testing.T) {
 			expectedInLog:    "Player Contract",
 		},
 		{
-			name:             "Success - Chance Failure (Failed to Revive)",
+			name:             "Fail - Chance Failure (Failed to Revive)",
 			payload:          makeTestPayload("Regular Revive Request", "10001", "No faction", ""),
-			mockTornScenario: "chance_fail", // Script sees "failed to revive" and returns success
-			expectedInLog:    "TestUser,10001,regular,Torn,No faction",
+			mockTornScenario: "chance_fail", // 100% chance but fails -> return fail
+			expectNoLog:      true,
+		},
+		{
+			name:              "Success - Low Chance Failure",
+			payload:           makeTestPayload("Regular Revive Request", "10007", "No faction", ""),
+			mockTornScenario:  "low_chance_fail", // 10% chance and fails -> return success
+			expectedInLog:     "TestUser,10007,regular,Torn,No faction",
+			overrideMinChance: 5,                 // 5 < 10, so it attempts it
 		},
 		{
 			name:             "Fail - DOM Traveling Hospital",
@@ -214,9 +242,10 @@ func TestGatewayE2E(t *testing.T) {
 
 	t.Run("group", func(t *testing.T) {
 		for _, tt := range tests {
-			tt := tt // capture loop variable for parallel execution
+			tt := tt // capture loop variable
 			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
+				// Removed t.Parallel() to prevent headless Chrome from being overwhelmed
+				// by 20 simultaneous tabs on small CI runners.
 
 				// Setup isolated filesystem per test
 				tempDir := t.TempDir()
@@ -235,8 +264,11 @@ func TestGatewayE2E(t *testing.T) {
 					MinAgeDays:       10,
 					NoHistoryAllowed: false,
 					NukeAPIToken:     "fake_nuke",
+					MinChance:        60,
 				}
-
+				if tt.overrideMinChance > 0 {
+					cfg.MinChance = tt.overrideMinChance
+				}
 				browserChan := make(chan string, 1)
 				browserOverride := func(url string) {
 					// Inject the scenario param

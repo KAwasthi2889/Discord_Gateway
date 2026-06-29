@@ -73,11 +73,7 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 		}
 
 		if status == "success" {
-			if strings.Contains(strings.ToLower(reason), "failed to revive") {
-				slog.Info("Failed to revive", "xid", xid)
-			} else {
-				slog.Info("Revive successful", "xid", xid)
-			}
+			slog.Info("Revive successful", "xid", xid)
 			quota.RecordSuccess()
 			go logger.Log(payload, contractNote)
 		} else {
