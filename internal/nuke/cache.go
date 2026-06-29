@@ -35,7 +35,7 @@ func (c *Client) SaveToDisk(path string) error {
 		return err
 	}
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, bytes, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, bytes, 0600); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, path)

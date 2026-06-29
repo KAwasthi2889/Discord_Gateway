@@ -26,7 +26,7 @@ func startTestingServer(ctx context.Context, userDir string, tornHandler *torn.H
 
 	// Write the dynamically assigned port to a dotfile so the injector CLI can discover it.
 	portFile := filepath.Join(userDir, ".inject_port")
-	if err := os.WriteFile(portFile, []byte(fmt.Sprintf("%d", port)), 0644); err != nil {
+	if err := os.WriteFile(portFile, []byte(fmt.Sprintf("%d", port)), 0600); err != nil {
 		slog.Error("Failed to write .inject_port file", "error", err)
 		os.Exit(1)
 	}

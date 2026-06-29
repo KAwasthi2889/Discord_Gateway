@@ -6,8 +6,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 )
+
+const MAX_SIZE = 5 * 1024 * 1024 // 5 MB
 
 func parseDate(dateStr *string) *time.Time {
 	if dateStr == nil || *dateStr == "" {
@@ -56,7 +59,7 @@ func (c *Client) RefreshAll() bool {
 			if entry.ShitListCategoryID != nil && *entry.ShitListCategoryID == 5 {
 				return // skip Nuke Family entirely
 			}
-			
+
 			catID := 0
 			if entry.ShitListCategoryID != nil {
 				catID = *entry.ShitListCategoryID
@@ -90,7 +93,7 @@ func (c *Client) RefreshAll() bool {
 			if entry.PlayerID != nil {
 				newShitlistPlayers[*entry.PlayerID] = addUnique(newShitlistPlayers[*entry.PlayerID], catID)
 			}
-			
+
 			if parseBool(entry.IsFactionBan) && entry.FactionID != nil {
 				newShitlistFactions[*entry.FactionID] = struct{}{}
 			}
@@ -213,6 +216,14 @@ func (c *Client) fetchPaginated(startURL string, processItem func(json.RawMessag
 		}
 
 		if page.NextPageURL != nil {
+			parsedURL, err := url.Parse(*page.NextPageURL)
+			if err != nil {
+				return fmt.Errorf("invalid next_page_url: %w", err)
+			}
+			baseURLParsed, _ := url.Parse(c.baseURL)
+			if parsedURL.Scheme != baseURLParsed.Scheme || parsedURL.Host != baseURLParsed.Host {
+				return fmt.Errorf("SSRF detected: invalid next_page_url host/scheme %s", *page.NextPageURL)
+			}
 			currentURL = *page.NextPageURL
 		} else {
 			break
@@ -237,9 +248,9 @@ func (c *Client) doRequest(url string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, MAX_SIZE))
 		return nil, fmt.Errorf("UNEXPECTED ERROR: HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	return io.ReadAll(resp.Body)
+	return io.ReadAll(io.LimitReader(resp.Body, MAX_SIZE))
 }
