@@ -18,8 +18,8 @@ func main() {
 	})
 	mux.HandleFunc("/profiles.php", handleProfiles)
 
-	log.Println("Mock Torn server listening on http://127.0.0.1:8080")
-	log.Fatal(http.ListenAndServe("127.0.0.1:8080", mux))
+	log.Println("Mock Torn server listening on http://127.0.0.1:58080")
+	log.Fatal(http.ListenAndServe("127.0.0.1:58080", mux))
 }
 
 func handleProfiles(w http.ResponseWriter, r *http.Request) {
