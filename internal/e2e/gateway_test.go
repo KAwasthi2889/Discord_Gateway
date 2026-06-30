@@ -244,8 +244,11 @@ func TestGatewayE2E(t *testing.T) {
 		for _, tt := range tests {
 			tt := tt // capture loop variable
 			t.Run(tt.name, func(t *testing.T) {
-				// Removed t.Parallel() to prevent headless Chrome from being overwhelmed
-				// by 20 simultaneous tabs on small CI runners.
+				// Run in parallel locally to speed up testing, but run sequentially
+				// in CI to prevent headless Chrome from being overwhelmed by 20 tabs.
+				if os.Getenv("CI") != "true" {
+					t.Parallel()
+				}
 
 				// Setup isolated filesystem per test
 				tempDir := t.TempDir()
