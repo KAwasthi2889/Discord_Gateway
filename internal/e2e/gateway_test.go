@@ -73,10 +73,10 @@ func TestGatewayE2E(t *testing.T) {
 		t.Fatalf("Failed to start mock torn server: %v", err)
 	}
 	defer mockCmd.Process.Kill()
-	// Wait up to 15 seconds for mock server to be ready on port 8080
+	// Wait up to 15 seconds for mock server to be ready on port 58080
 	ready := false
 	for i := 0; i < 30; i++ {
-		conn, err := net.DialTimeout("tcp", "127.0.0.1:8080", 500*time.Millisecond)
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:58080", 500*time.Millisecond)
 		if err == nil {
 			conn.Close()
 			ready = true
@@ -85,7 +85,7 @@ func TestGatewayE2E(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	if !ready {
-		t.Fatalf("Mock Torn server failed to start on :8080 in time")
+		t.Fatalf("Mock Torn server failed to start on :58080 in time")
 	}
 
 	// Create a shared headless browser instance for all parallel tests
@@ -272,7 +272,7 @@ func TestGatewayE2E(t *testing.T) {
 				browserChan := make(chan string, 1)
 				browserOverride := func(url string) {
 					// Inject the scenario param
-					mockURL := strings.Replace(url, "https://www.torn.com", "http://127.0.0.1:8080", 1)
+					mockURL := strings.Replace(url, "https://www.torn.com", "http://127.0.0.1:58080", 1)
 					if strings.Contains(mockURL, "?") {
 						mockURL = strings.Replace(mockURL, "?", "?scenario="+tt.mockTornScenario+"&", 1)
 					} else {
