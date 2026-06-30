@@ -1,0 +1,50 @@
+# Discord Gateway - Systemd Management Guide
+
+This guide explains how to install and manage the Discord Gateway background service on your Server.
+
+## 1. Installation
+To install the service on a new server, copy the configuration files to your systemd user directory and enable them:
+
+    mkdir -p ~/.config/systemd/user/
+    cp discord.service discord.timer ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now discord.timer
+
+## 2. Managing the Service
+
+Start the service immediately (doesn't wait for 3 AM):
+    systemctl --user start discord
+
+Stop the service immediately:
+    systemctl --user stop discord
+
+Restart the service (useful after replacing the binary with a new version):
+    systemctl --user restart discord
+
+Check if the service is currently running:
+    systemctl --user status discord
+
+## 3. Managing the Schedule (Timer)
+
+Check when the service is scheduled to run next:
+    systemctl --user status discord.timer
+
+Temporarily pause the 3 AM schedule:
+    systemctl --user stop discord.timer
+    (To stop the whole system from running, remember to stop the service too: systemctl --user stop discord)
+
+Resume the 3 AM schedule:
+    systemctl --user start discord.timer
+
+## 4. Reading the Logs
+
+Because we are using systemd, all terminal output is automatically captured by the system journal. You do not need to manage log files manually.
+
+View the live, scrolling output of the service (like tail -f):
+    journalctl --user -u discord -f
+
+View the last 100 lines of output:
+    journalctl --user -u discord -n 100
+
+View output from today only:
+    journalctl --user -u discord --since today

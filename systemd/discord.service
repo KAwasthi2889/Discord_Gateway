@@ -1,0 +1,17 @@
+[Unit]
+Description=Discord Gateway Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Discord_Gateway
+# Pointing to the 'discord' binary as named on EC2
+ExecStart=%h/Discord_Gateway/discord
+# Crucial: Tells the background service which VNC screen to open the browser on
+Environment=DISPLAY=:1
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

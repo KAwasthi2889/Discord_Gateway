@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Discord Gateway Bot daily at 3 AM
+
+[Timer]
+# Keep the timezone of the server in mind when setting this
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
