@@ -104,8 +104,8 @@ func main() {
 	select {
 	case <-tornHandler.PongChan():
 		slog.Info("Userscript verification successful! System ready.")
-	case <-time.After(5 * time.Second):
-		slog.Error("CRITICAL ERROR: Userscript did not respond to /ping within 5 seconds. Ensure Tampermonkey is running and the script is enabled!")
+	case <-time.After(30 * time.Second):
+		slog.Error("CRITICAL ERROR: Userscript did not respond to /ping within 30 seconds. Ensure Tampermonkey is running and the script is enabled!")
 		os.Exit(1)
 	}
 
