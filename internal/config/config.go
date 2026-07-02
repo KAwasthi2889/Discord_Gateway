@@ -47,6 +47,9 @@ type Config struct {
 
 	// MinChance is the default minimum revive chance percentage.
 	MinChance int
+
+	// Shitlist contains the pre-loaded shitlist configuration to avoid disk I/O on the hot path.
+	Shitlist *ShitlistConfig
 }
 
 // GetUserDir resolves the absolute path to the current user's dedicated configuration
@@ -152,6 +155,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("CHANNEL_IDS must be set in %s or environment", envPath)
 	}
 
+	slCfg, _ := LoadShitlistConfig()
+	if slCfg == nil {
+		slCfg = &ShitlistConfig{}
+	}
+
 	cfg := &Config{
 		Token:                 token,
 		TargetChannelIDs:      make(map[string]bool),
@@ -161,6 +169,7 @@ func Load() (*Config, error) {
 		DailyQuota:            dailyQuota,
 		NukeAPIToken:          nukeToken,
 		MinChance:             minChance,
+		Shitlist:              slCfg,
 	}
 
 	// Process the comma-separated channel IDs and compute the hot-path signatures.

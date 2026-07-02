@@ -35,7 +35,8 @@ func StartWatcher(ctx context.Context, userDir string, reloaders ...ConfigReload
 				if !ok {
 					return
 				}
-				if filepath.Base(event.Name) != ".env" {
+				baseName := filepath.Base(event.Name)
+				if baseName != ".env" && baseName != "shitlist.env" {
 					continue
 				}
 				// Watch for Write, Create, or Rename operations
