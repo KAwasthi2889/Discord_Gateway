@@ -73,11 +73,19 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 		}
 
 		if status == "success" {
-			slog.Info("Revive successful", "xid", xid)
+			if reason != "" {
+				slog.Info("Revive failed but treated as success (billable)", "xid", xid, "reason", reason)
+			} else {
+				slog.Info("Revive successful", "xid", xid)
+			}
 			quota.RecordSuccess()
 			go logger.Log(payload, contractNote)
 		} else {
-			slog.Info("Skipped auto-revive", "xid", xid, "reason", reason)
+			if reason == "failed to revive" {
+				slog.Info("Revive failed", "xid", xid, "reason", reason)
+			} else {
+				slog.Info("Skipped auto-revive", "xid", xid, "reason", reason)
+			}
 			if strings.Contains(strings.ToLower(reason), "enough energy") {
 				slog.Error("CRITICAL: Out of energy detected! Initiating emergency gateway shutdown.")
 				if onEmergencyShutdown != nil {
