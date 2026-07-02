@@ -67,8 +67,15 @@ func TestGatewayE2E(t *testing.T) {
 	nukeClient, nukeServer := setupTestEnvironment(t)
 	defer nukeServer.Close()
 
+	// Build the mock server into a temporary binary first to prevent orphaned child processes
+	mockBin := filepath.Join(t.TempDir(), "mock_torn_bin")
+	buildCmd := exec.Command("go", "build", "-o", mockBin, "../../cmd/mock_torn/main.go")
+	if err := buildCmd.Run(); err != nil {
+		t.Fatalf("Failed to build mock torn server: %v", err)
+	}
+
 	// Start the Mock Torn server in background
-	mockCmd := exec.Command("go", "run", "../../cmd/mock_torn/main.go")
+	mockCmd := exec.Command(mockBin)
 	if err := mockCmd.Start(); err != nil {
 		t.Fatalf("Failed to start mock torn server: %v", err)
 	}
