@@ -154,6 +154,10 @@ func (c *Client) Run(ctx context.Context) error {
 			slog.Debug("Graceful Gateway disconnection")
 		} else if err != nil && strings.Contains(err.Error(), "server requested reconnect") {
 			slog.Info("Gateway disconnected (server requested reconnect)")
+		} else if err != nil && strings.Contains(err.Error(), "1006") {
+			slog.Warn("Network connection abruptly dropped (1006).")
+		} else if err != nil && strings.Contains(err.Error(), "1001") {
+			slog.Warn("Gateway server is going away (1001).")
 		} else {
 			slog.Warn("Gateway disconnected", "error", err)
 		}
@@ -166,7 +170,7 @@ func (c *Client) Run(ctx context.Context) error {
 		if backoffSeconds > 30 {
 			backoffSeconds = 30
 		}
-		
+
 		slog.Info("Reconnecting...", "seconds", backoffSeconds, "attempt", consecutiveFailures, "max", maxConsecutiveRetries)
 
 		select {
