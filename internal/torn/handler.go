@@ -232,10 +232,9 @@ func (h *Handler) checkShitlist(xidInt int) bool {
 		return false // Not shitlisted
 	}
 
-	// Load configuration to check dynamic categories
-	slCfg, err := config.LoadShitlistConfig()
-	if err != nil {
-		slog.Warn("Failed to load shitlist config, defaulting to block", "error", err)
+	// Use pre-loaded configuration to evaluate dynamic categories zero-allocation
+	slCfg := h.cfg.Load().Shitlist
+	if slCfg == nil {
 		slCfg = &config.ShitlistConfig{}
 	}
 
