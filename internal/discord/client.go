@@ -162,10 +162,15 @@ func (c *Client) Run(ctx context.Context) error {
 			return fmt.Errorf("exceeded %d consecutive connection failures, last error: %v", maxConsecutiveRetries, err)
 		}
 
-		slog.Info("Reconnecting...", "seconds", 5, "attempt", consecutiveFailures, "max", maxConsecutiveRetries)
+		backoffSeconds := 1 << uint(consecutiveFailures-1)
+		if backoffSeconds > 30 {
+			backoffSeconds = 30
+		}
+		
+		slog.Info("Reconnecting...", "seconds", backoffSeconds, "attempt", consecutiveFailures, "max", maxConsecutiveRetries)
 
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(time.Duration(backoffSeconds) * time.Second):
 		case <-ctx.Done():
 			return nil
 		}
