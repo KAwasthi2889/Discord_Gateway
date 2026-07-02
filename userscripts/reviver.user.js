@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.4
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -130,7 +130,7 @@
                         }
                     } else {
                         let reason = text;
-                        if (text.includes("You do not have enough energy to perform this action.")) {
+                        if (text.toLowerCase().includes("enough energy")) {
                             reason = "Not enough energy";
                         }
                         logToGateway('fail', reason, gatewayXid);
