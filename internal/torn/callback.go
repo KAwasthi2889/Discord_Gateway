@@ -78,7 +78,7 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 			go logger.Log(payload, contractNote)
 		} else {
 			slog.Info("Skipped auto-revive", "xid", xid, "reason", reason)
-			if strings.Contains(strings.ToLower(reason), "not enough energy") {
+			if strings.Contains(strings.ToLower(reason), "enough energy") {
 				slog.Error("CRITICAL: Out of energy detected! Initiating emergency gateway shutdown.")
 				if onEmergencyShutdown != nil {
 					onEmergencyShutdown()
