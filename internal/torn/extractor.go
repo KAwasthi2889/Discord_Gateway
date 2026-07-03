@@ -92,8 +92,11 @@ func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, callbackToke
 	xidStr := string(xidBytes)
 
 	minAge := cfg.MinAgeDays
-	if bytes.Contains(data, tornRequestedBy) {
-		minAge = 0 // Bypass age check for "On Behalf" requests
+	isOnBehalf := bytes.Contains(data, tornRequestedBy)
+	hasPaymentHistory := !bytes.Contains(data, tornNoReviveHistory)
+
+	if isOnBehalf || hasPaymentHistory {
+		minAge = 0 // Bypass age check for "On Behalf" requests or those with payment history (shortcut)
 	}
 
 	// Cast the extracted slice to a string. This is the only allocation in this function.
