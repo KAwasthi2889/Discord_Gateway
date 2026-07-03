@@ -55,12 +55,16 @@ func setupTestEnvironment(t *testing.T) (*nuke.Client, *httptest.Server) {
 	return nukeClient, nukeServer
 }
 
-func makeTestPayload(title, targetXID, factionStr, requesterStr string) string {
+func makeTestPayload(title, targetXID, factionStr, requesterStr string, hasHistory bool) string {
 	reqField := ""
 	if requesterStr != "" {
 		reqField = fmt.Sprintf(`{"value":"%s","name":"🤝 Requested By (On Behalf)"},`, requesterStr)
 	}
-	return fmt.Sprintf(`{"channel_id":"111","embeds":[{"title":"%s","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=%s)"},{"name":"Player","value":"TestUser [%s]"},{"name":"Faction","value":"%s"},%s{"name":"\ud83d\udcca Revive History","value":"**5** confirmed paid revives in the last 90 days"}]}]}`, title, targetXID, targetXID, factionStr, reqField)
+	historyField := `**5** confirmed paid revives in the last 90 days`
+	if !hasHistory {
+		historyField = `No recorded history in the last 90 days`
+	}
+	return fmt.Sprintf(`{"channel_id":"111","embeds":[{"title":"%s","fields":[{"value":"Torn","name":"Country"},{"name":"Profile","value":"[Link](https://www.torn.com/profiles.php?XID=%s)"},{"name":"Player","value":"TestUser [%s]"},{"name":"Faction","value":"%s"},%s{"name":"\ud83d\udcca Revive History","value":"%s"}]}]}`, title, targetXID, targetXID, factionStr, reqField, historyField)
 }
 
 func TestGatewayE2E(t *testing.T) {
@@ -121,127 +125,150 @@ func TestGatewayE2E(t *testing.T) {
 		expectNoLog       bool   // If true, expect NO log entry for this XID
 		expectShutdown    bool   // If true, expect process to exit on its own
 		overrideMinChance int    // If non-zero, overrides the default 60% MinChance
+		overrideNoHistory bool   // If true, sets NoHistoryAllowed to true
 	}{
 		{
 			name:             "Success - Standard Revive",
-			payload:          makeTestPayload("Regular Revive Request", "1234567", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "1234567", "No faction", "", true),
 			mockTornScenario: "success",
 			expectedInLog:    "TestUser,1234567,regular,Torn,No faction",
 		},
 		{
 			name:             "Drop - Shitlisted Requester On Behalf",
-			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1234567", "No faction", "[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)"),
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1234567", "No faction", "[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)", false),
 			mockTornScenario: "success",
 			expectNoLog:      true,
+			overrideNoHistory: true,
 		},
 		{
 			name:             "Drop - Shitlisted Player",
-			payload:          makeTestPayload("Regular Revive Request", "9999", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "9999", "No faction", "", false),
+			mockTornScenario: "success",
+			expectNoLog:      true,
+			overrideNoHistory: true,
+		},
+		{
+			name:             "Success - Shitlisted Player Bypass with History",
+			payload:          makeTestPayload("Regular Revive Request", "9999", "No faction", "", true),
+			mockTornScenario: "success",
+			expectedInLog:    "TestUser,9999,regular,Torn,No faction",
+		},
+		{
+			name:             "Drop - Shitlisted Player Cat 3 with History",
+			payload:          makeTestPayload("Regular Revive Request", "5555", "No faction", "", true),
 			mockTornScenario: "success",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Drop - Shitlisted Faction",
-			payload:          makeTestPayload("Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", ""),
+			payload:          makeTestPayload("Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "", false),
 			mockTornScenario: "success",
 			expectNoLog:      true,
+			overrideNoHistory: true,
+		},
+		{
+			name:             "Success - Shitlisted Faction Bypass with History",
+			payload:          makeTestPayload("Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "", true),
+			mockTornScenario: "success",
+			expectedInLog:    "TestUser,1111,regular,Torn",
 		},
 		{
 			name:             "Success - Shitlisted Target (Cat 3) but Clean Requester On Behalf",
-			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "5555", "No faction", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)"),
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "5555", "No faction", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)", true),
 			mockTornScenario: "success",
 			expectedInLog:    "TestUser,5555,regular,Torn,No faction",
 		},
 		{
 			name:             "Drop - Shitlisted Faction with Clean Requester On Behalf",
-			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)"),
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)", false),
 			mockTornScenario: "success",
 			expectNoLog:      true,
+			overrideNoHistory: true,
 		},
 		{
 			name:             "Success - Faction Contract Override",
-			payload:          makeTestPayload("Regular Revive Request", "2222", "[Faction [7777]](https://www.torn.com/factions.php?step=profile&ID=7777)", ""),
+			payload:          makeTestPayload("Regular Revive Request", "2222", "[Faction [7777]](https://www.torn.com/factions.php?step=profile&ID=7777)", "", true),
 			mockTornScenario: "success",          // Success means 100% chance, so it passes the 50% minChance injected
 			expectedInLog:    "Faction Contract", // Should be appended as the Contract Note
 		},
 		{
 			name:             "Fail - Low Chance",
-			payload:          makeTestPayload("Regular Revive Request", "3333", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "3333", "No faction", "", true),
 			mockTornScenario: "low_chance", // 10% chance
 			expectNoLog:      true,         // Fails in browser, no successful CSV record
 		},
 		{
 			name:             "Fail - Button Disabled",
-			payload:          makeTestPayload("Regular Revive Request", "4444", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "4444", "No faction", "", true),
 			mockTornScenario: "disabled",
 			expectNoLog:      true, // Fails in browser
 		},
 		{
 			name:             "Fail - Energy Error Shutdown",
-			payload:          makeTestPayload("Regular Revive Request", "5555", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "5555", "No faction", "", true),
 			mockTornScenario: "energy_error",
 			expectNoLog:      true,
 			expectShutdown:   true,
 		},
 		{
 			name:             "Fail - Timeout",
-			payload:          makeTestPayload("Regular Revive Request", "6666", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "6666", "No faction", "", true),
 			mockTornScenario: "timeout",
 			expectNoLog:      true, // Times out, no CSV
 		},
 		{
 			name:             "Fail - Status Offline but Online Required",
-			payload:          makeTestPayload("Regular Revive Request", "7777", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "7777", "No faction", "", true),
 			mockTornScenario: "status_offline",
 			expectNoLog:      true,
 			expectedInLog:    "",
 		},
 		{
 			name:             "Success - Status Any",
-			payload:          makeTestPayload("Regular Revive Request", "8888", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "8888", "No faction", "", true),
 			mockTornScenario: "status_offline", // Contract is ANY, so offline should still succeed
 			expectedInLog:    "Player Contract",
 		},
 		{
 			name:             "Fail - Chance Failure (Failed to Revive)",
-			payload:          makeTestPayload("Regular Revive Request", "10001", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "10001", "No faction", "", true),
 			mockTornScenario: "chance_fail", // 100% chance but fails -> return fail
 			expectNoLog:      true,
 		},
 		{
 			name:              "Success - Low Chance Failure",
-			payload:           makeTestPayload("Regular Revive Request", "10007", "No faction", ""),
+			payload:           makeTestPayload("Regular Revive Request", "10007", "No faction", "", true),
 			mockTornScenario:  "low_chance_fail", // 10% chance and fails -> return success
 			expectedInLog:     "TestUser,10007,regular,Torn,No faction",
 			overrideMinChance: 5,                 // 5 < 10, so it attempts it
 		},
 		{
 			name:             "Fail - DOM Traveling Hospital",
-			payload:          makeTestPayload("Regular Revive Request", "10002", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "10002", "No faction", "", true),
 			mockTornScenario: "traveling_hospital",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - DOM Traveling Country",
-			payload:          makeTestPayload("Regular Revive Request", "10003", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "10003", "No faction", "", true),
 			mockTornScenario: "traveling_country",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - DOM Okay",
-			payload:          makeTestPayload("Regular Revive Request", "10004", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "10004", "No faction", "", true),
 			mockTornScenario: "okay",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - Unfamiliar State",
-			payload:          makeTestPayload("Regular Revive Request", "10005", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "10005", "No faction", "", true),
 			mockTornScenario: "unfamiliar",
 			expectNoLog:      true,
 		},
 		{
 			name:             "Fail - Cache Expired",
-			payload:          makeTestPayload("Regular Revive Request", "10006", "No faction", ""),
+			payload:          makeTestPayload("Regular Revive Request", "10006", "No faction", "", true),
 			mockTornScenario: "hang", // We'll intercept this and manually verify cache logic
 			expectNoLog:      true,
 		},
@@ -278,6 +305,9 @@ func TestGatewayE2E(t *testing.T) {
 				}
 				if tt.overrideMinChance > 0 {
 					cfg.MinChance = tt.overrideMinChance
+				}
+				if tt.overrideNoHistory {
+					cfg.NoHistoryAllowed = true
 				}
 				browserChan := make(chan string, 1)
 				browserOverride := func(url string) {

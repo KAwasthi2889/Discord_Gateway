@@ -171,13 +171,7 @@ func (h *Handler) OnMessageCreate(data []byte) {
 			factionIDInt, _ := strconv.Atoi(ExtractFactionID(data))
 
 			shitlistTargetXID := xidInt
-
-			// Rule 1: NO MATTER WHAT check on the original target.
-			// If target faction is globally banned, block unconditionally.
-			if h.nukeClient.IsFactionBanned(factionIDInt) {
-				slog.Info("Request dropped silently, target is strictly shitlisted (faction ban)", "xid", xid)
-				return
-			}
+			isOnBehalf := false
 
 			// check if it's an "on behalf of" request for remaining checks
 			if reqStr := ExtractRequesterXID(data); reqStr != "" {
@@ -186,12 +180,40 @@ func (h *Handler) OnMessageCreate(data []byte) {
 					if reqStr != xid {
 						// Overwrite the shitlist target to be the requester
 						shitlistTargetXID = reqInt
+						isOnBehalf = true
 					}
 				}
 			}
 
-			if h.checkShitlist(shitlistTargetXID) {
-				return
+			hasPaymentHistory := !bytes.Contains(data, tornNoReviveHistory)
+
+			if hasPaymentHistory && !isOnBehalf {
+				// Shortcut: If they have payment history > 0 AND it's a standard request (revivee paying), skip most shitlist checks.
+				// ONLY check if the evaluated person has Category 3 (Revive No-Payment).
+				cats := h.nukeClient.GetShitlistCategories(shitlistTargetXID)
+				hasCat3 := false
+				for _, cat := range cats {
+					if cat == 3 {
+						hasCat3 = true
+						break
+					}
+				}
+				if hasCat3 {
+					slog.Info("Request dropped silently due to shitlist (player has Category 3 despite payment history)", "xid", shitlistTargetXID)
+					return
+				}
+			} else {
+				// Normal checks
+				// Rule 1: NO MATTER WHAT check on the original target.
+				// If target faction is globally banned, block unconditionally.
+				if h.nukeClient.IsFactionBanned(factionIDInt) {
+					slog.Info("Request dropped silently, target is strictly shitlisted (faction ban)", "xid", xid)
+					return
+				}
+
+				if h.checkShitlist(shitlistTargetXID) {
+					return
+				}
 			}
 
 			if !h.globalRateLimiter.Allow() {
