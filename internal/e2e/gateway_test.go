@@ -134,11 +134,10 @@ func TestGatewayE2E(t *testing.T) {
 			expectedInLog:    "TestUser,1234567,regular,Torn,No faction",
 		},
 		{
-			name:             "Drop - Shitlisted Requester On Behalf",
-			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1234567", "No faction", "[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)", false),
+			name:             "Drop - Shitlisted Requester On Behalf (Even With History)",
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1234567", "No faction", "[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)", true),
 			mockTornScenario: "success",
 			expectNoLog:      true,
-			overrideNoHistory: true,
 		},
 		{
 			name:             "Drop - Shitlisted Player",
@@ -179,11 +178,10 @@ func TestGatewayE2E(t *testing.T) {
 			expectedInLog:    "TestUser,5555,regular,Torn,No faction",
 		},
 		{
-			name:             "Drop - Shitlisted Faction with Clean Requester On Behalf",
-			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)", false),
+			name:             "Drop - Shitlisted Faction with Clean Requester On Behalf (Even With History)",
+			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)", true),
 			mockTornScenario: "success",
 			expectNoLog:      true,
-			overrideNoHistory: true,
 		},
 		{
 			name:             "Success - Faction Contract Override",
