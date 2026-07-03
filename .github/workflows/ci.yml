@@ -7,53 +7,76 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  changes:
     runs-on: ubuntu-latest
-
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      userscript: ${{ steps.filter.outputs.userscript }}
     steps:
     - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          go:
+            - '**.go'
+            - 'go.mod'
+            - 'go.sum'
+          userscript:
+            - 'userscripts/**.user.js'
 
+  unit-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version: '1.26'
-
     - name: Build
       run: go build -v ./...
-
     - name: Test
-      run: go test -v -race ./...
+      run: go test -v -race $(go list ./... | grep -v /e2e)
+
+  e2e-tests:
+    needs: changes
+    if: ${{ needs.changes.outputs.go == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26'
+    - name: Test
+      run: go test -v -race ./internal/e2e/...
 
   userscript-version-check:
+    needs: changes
+    if: ${{ needs.changes.outputs.userscript == 'true' }}
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 2
-
     - name: Check userscript version bump
       run: |
-        # Determine the base commit to diff against.
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           BASE="${{ github.event.pull_request.base.sha }}"
         else
           BASE="HEAD~1"
         fi
-
         FAILED=0
         for file in $(git diff --name-only "$BASE" HEAD -- 'userscripts/*.user.js'); do
-          # Skip deleted files
           [ -f "$file" ] || continue
-
           OLD_VER=$(git show "$BASE:$file" 2>/dev/null | grep -oP '// @version\s+\K\S+' || echo "")
           NEW_VER=$(grep -oP '// @version\s+\K\S+' "$file" || echo "")
-
           if [ -z "$OLD_VER" ]; then
             echo "✅ $file is new (version: $NEW_VER)"
             continue
           fi
-
           if [ "$OLD_VER" = "$NEW_VER" ]; then
             echo "❌ $file was modified but @version was not bumped (still $OLD_VER)"
             FAILED=1
@@ -61,7 +84,6 @@ jobs:
             echo "✅ $file version bumped: $OLD_VER → $NEW_VER"
           fi
         done
-
         if [ "$FAILED" -ne 0 ]; then
           echo ""
           echo "::error::Userscript(s) were modified without a @version bump. Please update the version."
