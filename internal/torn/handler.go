@@ -56,24 +56,26 @@ func NewHandler(ctx context.Context, cfg *config.Config, logFile *os.File, userD
 	logger := NewMessageLogger(logFile)
 	cache := NewPayloadCache(ctx, 25*time.Second, 0)
 
-	cbPort, pongChan, cbToken, err := StartCallbackServer(quota, cache, logger, nil)
-	if err != nil {
-		slog.Warn("Callback server failed to start", "error", err)
-		slog.Info("Daily quota will still gate browser launches, but success tracking is disabled")
-	}
-
 	h := &Handler{
 		logger:            logger,
 		quota:             quota,
 		cache:             cache,
 		nukeClient:        nukeClient,
-		callbackPort:      cbPort,
-		callbackToken:     cbToken,
 		globalRateLimiter: NewRateLimiter(15, time.Minute),
-		pongChan:          pongChan,
 	}
 	h.cfg.Store(cfg)
 	h.browser.Store(NewBrowserLauncher(cfg))
+
+	cbPort, pongChan, cbToken, err := StartCallbackServer(func() *config.Config { return h.cfg.Load() }, quota, cache, logger, nil)
+	if err != nil {
+		slog.Warn("Callback server failed to start", "error", err)
+		slog.Info("Daily quota will still gate browser launches, but success tracking is disabled")
+	}
+
+	h.callbackPort = cbPort
+	h.callbackToken = cbToken
+	h.pongChan = pongChan
+
 	return h
 }
 

@@ -50,6 +50,9 @@ type Config struct {
 
 	// Shitlist contains the pre-loaded shitlist configuration to avoid disk I/O on the hot path.
 	Shitlist *ShitlistConfig
+
+	// BillableFailures determines whether chance-based revive failures are billed.
+	BillableFailures bool
 }
 
 // GetUserDir resolves the absolute path to the current user's dedicated configuration
@@ -147,6 +150,12 @@ func Load() (*Config, error) {
 		minChance = 60
 	}
 
+	billableFailsStr := envMap["BILLABLE_FAILURES"]
+	if billableFailsStr == "" {
+		billableFailsStr = os.Getenv("BILLABLE_FAILURES")
+	}
+	billableFailures := strings.ToLower(billableFailsStr) == "true"
+
 	// Enforce strict validation on required configuration keys.
 	if token == "" {
 		return nil, fmt.Errorf("DISCORD_TOKEN must be set in %s or environment", envPath)
@@ -170,6 +179,7 @@ func Load() (*Config, error) {
 		NukeAPIToken:          nukeToken,
 		MinChance:             minChance,
 		Shitlist:              slCfg,
+		BillableFailures:      billableFailures,
 	}
 
 	// Process the comma-separated channel IDs and compute the hot-path signatures.

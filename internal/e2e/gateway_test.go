@@ -126,6 +126,7 @@ func TestGatewayE2E(t *testing.T) {
 		expectShutdown    bool   // If true, expect process to exit on its own
 		overrideMinChance int    // If non-zero, overrides the default 60% MinChance
 		overrideNoHistory bool   // If true, sets NoHistoryAllowed to true
+		overrideBillableFailures bool // If true, sets BillableFailures to true
 	}{
 		{
 			name:             "Success - Standard Revive",
@@ -202,11 +203,10 @@ func TestGatewayE2E(t *testing.T) {
 			expectNoLog:      true, // Fails in browser
 		},
 		{
-			name:             "Fail - Energy Error Shutdown",
+			name:             "Fail - Energy Error",
 			payload:          makeTestPayload("Regular Revive Request", "5555", "No faction", "", true),
 			mockTornScenario: "energy_error",
 			expectNoLog:      true,
-			expectShutdown:   true,
 		},
 		{
 			name:             "Fail - Timeout",
@@ -239,6 +239,7 @@ func TestGatewayE2E(t *testing.T) {
 			mockTornScenario:  "low_chance_fail", // 10% chance and fails -> return success
 			expectedInLog:     "TestUser,10007,regular,Torn,No faction",
 			overrideMinChance: 5,                 // 5 < 10, so it attempts it
+			overrideBillableFailures: true,
 		},
 		{
 			name:             "Fail - DOM Traveling Hospital",
@@ -307,6 +308,9 @@ func TestGatewayE2E(t *testing.T) {
 				if tt.overrideNoHistory {
 					cfg.NoHistoryAllowed = true
 				}
+				if tt.overrideBillableFailures {
+					cfg.BillableFailures = true
+				}
 				browserChan := make(chan string, 1)
 				browserOverride := func(url string) {
 					// Inject the scenario param
@@ -335,7 +339,7 @@ func TestGatewayE2E(t *testing.T) {
 					shutdownTriggered = true
 				}
 
-				cbPort, _, cbToken, err := torn.StartCallbackServer(quota, cache, logger, shutdownHook)
+				cbPort, _, cbToken, err := torn.StartCallbackServer(func() *config.Config { return cfg }, quota, cache, logger, shutdownHook)
 				if err != nil {
 					t.Fatalf("Failed to start callback: %v", err)
 				}
