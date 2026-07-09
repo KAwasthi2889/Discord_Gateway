@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -14,9 +15,10 @@ type ShitlistConfig struct {
 	AllowBuyMugger         bool
 	AllowAbsoluteScumLords bool
 	AllowOther             bool
+	LocalShitlist          map[int]bool
 }
 
-// LoadShitlistConfig parses the shitlist.env file from the user's configuration directory.
+// LoadShitlistConfig parses the shitlist.env file and personalSList.txt from the user's config directory.
 func LoadShitlistConfig() (*ShitlistConfig, error) {
 	dir, err := GetUserDir()
 	if err != nil {
@@ -38,9 +40,25 @@ func LoadShitlistConfig() (*ShitlistConfig, error) {
 		return strings.ToLower(val) == "true"
 	}
 
+	localShitlist := make(map[int]bool)
+	personalSListPath := filepath.Join(dir, "personalSList.txt")
+	content, err := os.ReadFile(personalSListPath)
+	if err == nil {
+		// Replace commas and newlines with spaces to allow multiple formats
+		normalized := strings.ReplaceAll(string(content), ",", " ")
+		normalized = strings.ReplaceAll(normalized, "\n", " ")
+		fields := strings.Fields(normalized)
+		for _, field := range fields {
+			if id, err := strconv.Atoi(strings.TrimSpace(field)); err == nil {
+				localShitlist[id] = true
+			}
+		}
+	}
+
 	return &ShitlistConfig{
 		AllowBuyMugger:         resolveBool("ALLOW_BUY_MUGGER"),
 		AllowAbsoluteScumLords: resolveBool("ALLOW_ABSOLUTE_SCUM_LORDS"),
 		AllowOther:             resolveBool("ALLOW_OTHER"),
+		LocalShitlist:          localShitlist,
 	}, nil
 }

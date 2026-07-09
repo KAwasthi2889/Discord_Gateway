@@ -127,12 +127,20 @@ func TestGatewayE2E(t *testing.T) {
 		overrideMinChance int    // If non-zero, overrides the default 60% MinChance
 		overrideNoHistory bool   // If true, sets NoHistoryAllowed to true
 		overrideBillableFailures bool // If true, sets BillableFailures to true
+		overrideLocalShitlist []int // If set, populates cfg.Shitlist.LocalShitlist
 	}{
 		{
 			name:             "Success - Standard Revive",
 			payload:          makeTestPayload("Regular Revive Request", "1234567", "No faction", "", true),
 			mockTornScenario: "success",
 			expectedInLog:    "TestUser,1234567,regular,Torn,No faction",
+		},
+		{
+			name:             "Drop - Local Shitlist",
+			payload:          makeTestPayload("Regular Revive Request", "31337", "No faction", "", true),
+			mockTornScenario: "success",
+			expectNoLog:      true,
+			overrideLocalShitlist: []int{31337},
 		},
 		{
 			name:             "Drop - Shitlisted Requester On Behalf (Even With History)",
@@ -310,6 +318,14 @@ func TestGatewayE2E(t *testing.T) {
 				}
 				if tt.overrideBillableFailures {
 					cfg.BillableFailures = true
+				}
+				if len(tt.overrideLocalShitlist) > 0 {
+					cfg.Shitlist = &config.ShitlistConfig{
+						LocalShitlist: make(map[int]bool),
+					}
+					for _, id := range tt.overrideLocalShitlist {
+						cfg.Shitlist.LocalShitlist[id] = true
+					}
 				}
 				browserChan := make(chan string, 1)
 				browserOverride := func(url string) {

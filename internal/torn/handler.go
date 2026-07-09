@@ -187,6 +187,12 @@ func (h *Handler) OnMessageCreate(data []byte) {
 				}
 			}
 
+			// Local Shitlist Check: Absolutely ignore requests for players on the personal shitlist
+			if cfg.Shitlist != nil && cfg.Shitlist.LocalShitlist[shitlistTargetXID] {
+				slog.Info("Request dropped silently due to local shitlist", "xid", shitlistTargetXID)
+				return
+			}
+
 			hasPaymentHistory := !bytes.Contains(data, tornNoReviveHistory)
 
 			if hasPaymentHistory && !isOnBehalf {
