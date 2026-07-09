@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strings"
+
+	"discord_gateway/internal/config"
 )
 
 // StartCallbackServer boots a localized HTTP server on a dynamic OS-assigned port.
@@ -15,7 +16,7 @@ import (
 // If onEmergencyShutdown is provided, it is invoked when out of energy is detected.
 // It also provides a PongReceived channel to verify the userscript is active.
 // Returns the port, the pong channel, the generated auth token, and any error.
-func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, onEmergencyShutdown func()) (int, chan struct{}, string, error) {
+func StartCallbackServer(getAppConfig func() *config.Config, quota *DailyQuota, cache *PayloadCache, logger *MessageLogger, onEmergencyShutdown func()) (int, chan struct{}, string, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return 0, nil, "", err
@@ -72,6 +73,13 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 			return
 		}
 
+		if status == "success" && reason != "" {
+			cfg := getAppConfig()
+			if cfg != nil && !cfg.BillableFailures {
+				status = "fail"
+			}
+		}
+
 		if status == "success" {
 			if reason != "" {
 				slog.Info("Revive failed but treated as success (billable)", "xid", xid, "reason", reason)
@@ -83,17 +91,17 @@ func StartCallbackServer(quota *DailyQuota, cache *PayloadCache, logger *Message
 		} else {
 			if reason == "failed to revive" {
 				slog.Info("Revive failed", "xid", xid, "reason", reason)
+			} else if strings.HasPrefix(reason, "[CRITICAL]") {
+				slog.Error("CRITICAL ERROR", "xid", xid, "reason", reason)
+				if strings.Contains(reason, "CAPTCHA") && onEmergencyShutdown != nil {
+					slog.Warn("Initiating emergency shutdown due to CAPTCHA")
+					onEmergencyShutdown()
+				}
 			} else {
 				slog.Info("Skipped auto-revive", "xid", xid, "reason", reason)
 			}
 			if strings.Contains(strings.ToLower(reason), "enough energy") {
-				slog.Error("CRITICAL: Out of energy detected! Initiating emergency gateway shutdown.")
-				if onEmergencyShutdown != nil {
-					onEmergencyShutdown()
-				} else {
-					p, _ := os.FindProcess(os.Getpid())
-					_ = p.Signal(os.Interrupt)
-				}
+				slog.Info("Out of energy detected", "xid", xid)
 			}
 		}
 
