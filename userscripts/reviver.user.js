@@ -247,7 +247,7 @@
                     return;
                 }
 
-                revButton.click();
+                
 
                 // PHASE 2: Wait for confirmation dialog
                 const profileButtons = document.querySelector('.profile-buttons') || document.body;
@@ -280,6 +280,7 @@
                     logToGateway('fail', '[UserScript] Confirmation dialog did not appear.');
                 }, 5000);
 
+                revButton.click();
             }, 150);
         };
 
