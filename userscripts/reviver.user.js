@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.2.4
+// @version      1.3.0
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -91,6 +91,8 @@
         }
     }
 
+    const isCloudflare = () => document.title.includes('Just a moment') || document.querySelector('#cf-wrapper') || document.querySelector('.cf-browser-verification') || document.querySelector('#challenge-running');
+
     function getReviveInfo(container = document.body) {
         let pageText = "";
         const confirmDialog = container.querySelector('.confirm-revive');
@@ -107,8 +109,28 @@
         return { chance, text: pageText.trim() };
     }
 
+    function diagnoseAndFail(isTimeout = false) {
+        if (!document.querySelector('.main-desc')) {
+            if (isCloudflare()) {
+                logToGateway('fail', '[CRITICAL] Cloudflare CAPTCHA blocked the request');
+            } else {
+                logToGateway('fail', '[CRITICAL] Page not loaded');
+            }
+        } else {
+            const specificError = getPlayerStateError();
+            if (specificError) {
+                logToGateway('fail', `[UserScript] ${specificError}`);
+            } else {
+                logToGateway('fail', isTimeout ? '[UserScript] Auto-revive timed out, revive button not found.' : '[UserScript] Target is not in the hospital.');
+            }
+        }
+    }
+
     const watchForSuccessAndClose = (actualChance) => {
         let successFound = false;
+        // Phase 3: Watch for success message on .profile-buttons
+        const dialogTarget = document.querySelector('.profile-buttons') || document.body;
+        let successTimeout;
 
         const successObserver = new MutationObserver((m, obs) => {
             const responseTextEl = document.querySelector('.profile-buttons-dialog .center-block .text');
@@ -138,17 +160,13 @@
                 }
                 successFound = true;
                 obs.disconnect();
+                clearTimeout(successTimeout);
             }
         });
 
-        const dialogTarget = document.querySelector('.profile-buttons-dialog');
-        if (dialogTarget) {
-            successObserver.observe(dialogTarget, { childList: true, subtree: true, characterData: true });
-        } else {
-            successObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
-        }
+        successObserver.observe(dialogTarget, { childList: true, subtree: true, characterData: true });
 
-        setTimeout(() => {
+        successTimeout = setTimeout(() => {
             successObserver.disconnect();
             if (!successFound) {
                 const msg = '[UserScript] Success message not found within 5s.';
@@ -157,34 +175,6 @@
             }
         }, 5000);
     };
-
-    function autoConfirmRevive() {
-        if (isConfirming) return;
-        const yesButton = document.querySelector('.confirm-action-yes') || document.querySelector('.confirm-action');
-        if (yesButton) {
-            const dialog = document.querySelector('.profile-buttons-dialog');
-            const reviveInfo = getReviveInfo(dialog || document.body);
-            if (reviveInfo.chance !== null) {
-                if (reviveInfo.chance >= minChanceOverride) {
-                    isConfirming = true;
-                    yesButton.click();
-                    watchForSuccessAndClose(reviveInfo.chance);
-                } else {
-                    logToGateway('fail', `[UserScript] Skipped auto-revive, chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
-                }
-            } else {
-                logToGateway('fail', `[UserScript] Could not determine success chance. Raw text: "${reviveInfo.text}"`);
-            }
-        }
-    }
-
-    let debounceTimer;
-    const observer = new MutationObserver((mutations) => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            autoConfirmRevive();
-        }, 50);
-    });
 
     const getPlayerAgeDays = () => {
         const ttAge = document.querySelector('.tt-age-text');
@@ -258,6 +248,38 @@
                 }
 
                 revButton.click();
+
+                // PHASE 2: Wait for confirmation dialog
+                const profileButtons = document.querySelector('.profile-buttons') || document.body;
+                let confirmTimeout;
+                const confirmObserver = new MutationObserver(() => {
+                    const yesButton = document.querySelector('.confirm-action-yes') || document.querySelector('.confirm-action');
+                    if (yesButton) {
+                        confirmObserver.disconnect();
+                        clearTimeout(confirmTimeout);
+                        
+                        const dialog = document.querySelector('.profile-buttons-dialog');
+                        const reviveInfo = getReviveInfo(dialog || document.body);
+                        if (reviveInfo.chance !== null) {
+                            if (reviveInfo.chance >= minChanceOverride) {
+                                yesButton.click();
+                                watchForSuccessAndClose(reviveInfo.chance); // Start Phase 3
+                            } else {
+                                logToGateway('fail', `[UserScript] Skipped auto-revive, chance ${reviveInfo.chance}% is below minChance ${minChanceOverride}%.`);
+                            }
+                        } else {
+                            logToGateway('fail', `[UserScript] Could not determine success chance. Raw text: "${reviveInfo.text}"`);
+                        }
+                    }
+                });
+                
+                confirmObserver.observe(profileButtons, { childList: true, subtree: true });
+                
+                confirmTimeout = setTimeout(() => {
+                    confirmObserver.disconnect();
+                    logToGateway('fail', '[UserScript] Confirmation dialog did not appear.');
+                }, 5000);
+
             }, 150);
         };
 
@@ -306,27 +328,37 @@
             if (buttonsList) {
                 buttonsListFound = true;
                 autoReviveObserver.disconnect();
-                if (autoReviveTimeout) clearTimeout(autoReviveTimeout);
+                if (autoReviveTimeout) clearInterval(autoReviveTimeout);
 
                 const revButton = buttonsList.querySelector('.profile-button-revive');
                 if (revButton) {
                     clickReviveButton();
                 } else {
-                    const specificError = getPlayerStateError();
-                    const msg = specificError ? `[UserScript] ${specificError}` : '[UserScript] Target is not in the hospital.';
-                    logToGateway('fail', msg);
+                    diagnoseAndFail(false);
                 }
             }
         });
         autoReviveObserver.observe(targetContainer, { childList: true, subtree: true });
 
-        autoReviveTimeout = setTimeout(() => {
-            autoReviveObserver.disconnect();
-            const specificError = getPlayerStateError();
-            const msg = specificError ? `[UserScript] ${specificError}` : '[UserScript] Auto-revive timed out, revive button not found.';
-            logToGateway('fail', msg);
-        }, 10000);
+        let timeElapsed = 0;
+        autoReviveTimeout = setInterval(() => {
+            if (isCloudflare()) {
+                timeElapsed -= 1000;
+                if (timeElapsed < -20000) { // Max 20s for Cloudflare
+                    clearInterval(autoReviveTimeout);
+                    autoReviveObserver.disconnect();
+                    logToGateway('fail', '[CRITICAL] Cloudflare CAPTCHA blocked the request');
+                }
+                return;
+            }
+
+            timeElapsed += 1000;
+            if (timeElapsed >= 10000) {
+                clearInterval(autoReviveTimeout);
+                autoReviveObserver.disconnect();
+                diagnoseAndFail(true);
+            }
+        }, 1000);
     }
 
-    observer.observe(document.getElementById('profileroot') || document.body, { childList: true, subtree: true });
 })();
