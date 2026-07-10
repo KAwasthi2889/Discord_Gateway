@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.4.1
+// @version      1.5.1
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -36,7 +36,6 @@
 
     let minChanceOverride = 60; // Default, overridden by URL hash from Go backend
     let requiredStatus = null;
-    let MIN_AGE_DAYS = 365;
 
     // Replace hash with #auto to prevent accidental re-triggers on manual refresh
     // while keeping a marker so fast_revive knows to stay away
@@ -47,12 +46,6 @@
 
     const tokenMatch = savedHash.match(/token=([a-fA-F0-9]+)/);
     if (tokenMatch) cbtoken = tokenMatch[1];
-
-    const hashMatch = savedHash.match(/autorevive=(\d+)/);
-    if (hashMatch) {
-        const parsedAge = parseInt(hashMatch[1], 10);
-        if (!isNaN(parsedAge) && parsedAge >= 0) MIN_AGE_DAYS = parsedAge;
-    }
 
     const minChanceMatch = savedHash.match(/minChance=(\d+)/);
     if (minChanceMatch) {
@@ -172,30 +165,7 @@
         }, 5000);
     };
 
-    const getPlayerAgeDays = () => {
-        const ttAge = document.querySelector('.tt-age-text');
-        if (ttAge) {
-            const text = ttAge.textContent.trim();
-            let totalDays = 0;
-            let matched = false;
-            const years = text.match(/(\d+)\s*year/i);
-            const months = text.match(/(\d+)\s*month/i);
-            const days = text.match(/(\d+)\s*day/i);
-            if (years) { totalDays += parseInt(years[1], 10) * 365; matched = true; }
-            if (months) { totalDays += parseInt(months[1], 10) * 30; matched = true; }
-            if (days) { totalDays += parseInt(days[1], 10); matched = true; }
-            if (matched) return totalDays;
-        }
-        const ageBox = document.querySelector('.box-info.age');
-        if (ageBox) {
-            const digits = ageBox.querySelectorAll('.digit');
-            let numStr = '';
-            digits.forEach(d => { numStr += d.textContent.trim(); });
-            const parsed = parseInt(numStr, 10);
-            if (!isNaN(parsed)) return parsed;
-        }
-        return null;
-    };
+
 
     const getPlayerStateError = () => {
         const descEl = document.querySelector('.main-desc');
@@ -236,15 +206,6 @@
                         return;
                     }
                 }
-
-                const ageDays = getPlayerAgeDays();
-                if (MIN_AGE_DAYS > 0 && ageDays !== null && ageDays < MIN_AGE_DAYS) {
-                    const msg = `[UserScript] Skipped auto-revive, player age ${ageDays} days is under ${MIN_AGE_DAYS} day minimum.`;
-                    logToGateway('fail', msg);
-                    return;
-                }
-
-
 
                 // PHASE 2: Wait for confirmation dialog
                 const profileButtons = document.querySelector('.profile-buttons') || document.body;

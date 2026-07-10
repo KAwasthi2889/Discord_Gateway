@@ -7,7 +7,7 @@ import (
 )
 
 func TestExtractProfileLinkAndXID(t *testing.T) {
-	cfg := &config.Config{MinAgeDays: 10}
+	cfg := &config.Config{MinBattleStats: 100000}
 
 	tests := []struct {
 		data         []byte
@@ -15,13 +15,13 @@ func TestExtractProfileLinkAndXID(t *testing.T) {
 		expectedXID  string
 	}{
 		{
-			data:         []byte(`"value":"[Link](https://www.torn.com/profiles.php?XID=12345)" No recorded history in the last 90 days`),
-			expectedLink: "https://www.torn.com/profiles.php?XID=12345#autorevive=10&cbport=8080&token=test_token",
+			data:         []byte(`"value":"[Link](https://www.torn.com/profiles.php?XID=12345)" Paid`),
+			expectedLink: "https://www.torn.com/profiles.php?XID=12345#autorevive=1&cbport=8080&token=test_token",
 			expectedXID:  "12345",
 		},
 		{
-			data:         []byte(`"value":"[Link](https://www.torn.com/profiles.php?XID=9876543) [User]" No recorded history in the last 90 days`),
-			expectedLink: "https://www.torn.com/profiles.php?XID=9876543#autorevive=10&cbport=8080&token=test_token",
+			data:         []byte(`"value":"[Link](https://www.torn.com/profiles.php?XID=9876543) [User]" Paid`),
+			expectedLink: "https://www.torn.com/profiles.php?XID=9876543#autorevive=1&cbport=8080&token=test_token",
 			expectedXID:  "9876543",
 		},
 		{
