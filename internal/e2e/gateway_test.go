@@ -193,6 +193,7 @@ func TestGatewayE2E(t *testing.T) {
 			payload:          makeTestPayload("Regular Revive Request", "5555", "No faction", "", true),
 			mockTornScenario: "energy_error",
 			expectNoLog:      true,
+			expectShutdown:   true,
 		},
 		{
 			name:             "Fail - Timeout",

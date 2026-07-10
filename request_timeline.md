@@ -31,11 +31,11 @@ This document maps the entire lifecycle of a request from Discord message arriva
   - *Failure Condition*: If `IsAllowed(PlayerID)` returns false (too many rapid requests for the same ID), drops request and logs: `[INFO] Rate limit hit for target. Dropping request silently. target_id={xid}`.
   - *Failure Condition*: A hardcoded max of 15 tabs opened in a minute for all/any XID. If hit, drops request and logs: `[INFO] Global rate limit hit (>15/min). Dropping request silently.`
 - **Daily Quota Check**:
-  - *Failure Condition*: If `quota.IsLimitReached()` returns true, logs `[WARN] Daily quota limit reached. Dropping request silently and gracefully shutting down.` and **gracefully shuts down the Go application**.
+  - *Failure Condition*: If `quota.IsLimitReached()` returns true, logs `[INFO] Daily quota limit reached. Dropping request silently and gracefully shutting down.` and **gracefully shuts down the Go application**.
 
 ### 4. Cache & Browser Launch
 - **Cache Registration**: Adds `xid` to `PayloadCache` with a **25-second expiration**.
-  - *Failure Condition*: If the userscript doesn't hit the callback server within 25 seconds, a background goroutine in Go deletes it and logs: `[WARN] Timeout / No response from browser for XID, flushing it xid={xid}`.
+  - *Failure Condition*: If the userscript doesn't hit the callback server within 25 seconds, a background goroutine in Go deletes it and logs: `[WARN] Timeout / No response from browser for {XID}, flushing it`.
 - **Browser Execution**: Generates URL with `?XID=...#autorevive=...&cbport=...` and launches the OS default browser.
 
 ### 5. Userscript Initialization
@@ -90,7 +90,9 @@ This document maps the entire lifecycle of a request from Discord message arriva
     - **Records to `records.csv`** and increments the Daily Quota.
     - Logs: `[INFO] Revive successful xid={xid}`.
   - If `status == "fail"`:
-    - Logs `[INFO] Skipped auto-revive xid={xid} reason={reason}`.
+    - For standard reasons (e.g. chance failures, standard skips): Logs `[WARN] Skipped auto-revive xid={xid} reason={reason}`.
+    - For unfamiliar/raw reasons (e.g. `UNEXPECTED ERROR:`): Logs `[ERROR] Unstandardized error xid={xid} reason={reason}`.
     - *Does not* increment quota, *does not* write to `records.csv`.
   - **Emergency Shutdown**:
-    - *Failure Condition*: If `reason` contains "Not enough energy", logs `[ERROR] CRITICAL: Out of energy detected! Initiating emergency gateway shutdown.` and gracefully terminates the application.
+    - *Failure Condition*: If `reason` contains "cloudflare", "captcha", or starts with `[CRITICAL]`, logs `[ERROR] CRITICAL ERROR: Cloudflare/CAPTCHA detected` and initiates emergency shutdown.
+    - *Failure Condition*: If `reason` contains "Not enough energy", logs `[INFO] Out of energy detected. Initiating emergency gateway shutdown.` and gracefully terminates the application.
