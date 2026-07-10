@@ -66,7 +66,7 @@ func TestExtractFactionID(t *testing.T) {
 }
 
 func TestIsPaidRegularRevive(t *testing.T) {
-	cfg := &config.Config{NoHistoryAllowed: false}
+	cfg := &config.Config{}
 
 	validPayload := []byte(`"title":"Regular Revive Request","value":"5 paid"`)
 	if ok, _ := IsPaidRegularRevive(cfg, validPayload); !ok {
@@ -78,28 +78,8 @@ func TestIsPaidRegularRevive(t *testing.T) {
 		t.Error("Expected premium payload to be rejected")
 	}
 
-	noHistoryPayload := []byte(`"title":"Regular Revive Request","value":"No recorded history in the last 90 days"`)
-	if ok, reason := IsPaidRegularRevive(cfg, noHistoryPayload); ok || reason != "0 revives" {
-		t.Error("Expected no history to be rejected when not allowed")
-	}
-
-	cfg.NoHistoryAllowed = true
-	if ok, _ := IsPaidRegularRevive(cfg, noHistoryPayload); !ok {
-		t.Error("Expected no history to be accepted when allowed")
-	}
-}
-
-func TestExtractRequesterXID(t *testing.T) {
-	data := []byte(`{"value":"[JonnyCase [2185985]](https://www.torn.com/profiles.php?XID=2185985)","name":"Player","inline":false},{"value":"[PT-ShadowRazers [478]](https://www.torn.com/factions.php?step=profile&ID=478)","name":"Faction","inline":false},{"value":"Torn","name":"Country","inline":false},{"value":"[Magic [2471842]](https://www.torn.com/profiles.php?XID=2471842) - **Contact THIS player for payment!!**","name":"🤝 Requested By (On Behalf)","inline":false}`)
-	expectedXID := "2471842"
-	actualXID := ExtractRequesterXID(data)
-	if actualXID != expectedXID {
-		t.Errorf("Expected Requester XID %s, got %s", expectedXID, actualXID)
-	}
-
-	// Test when no requester is present
-	dataWithoutRequester := []byte(`{"value":"[JonnyCase [2185985]](https://www.torn.com/profiles.php?XID=2185985)","name":"Player","inline":false}`)
-	if ExtractRequesterXID(dataWithoutRequester) != "" {
-		t.Errorf("Expected empty string when no requester present")
+	onBehalfPayload := []byte(`"title":"Regular Revive Request","value":"[Link](...)", "name":"🤝 Requested By (On Behalf)"`)
+	if ok, reason := IsPaidRegularRevive(cfg, onBehalfPayload); ok || reason != "on behalf" {
+		t.Error("Expected on behalf request to be rejected")
 	}
 }

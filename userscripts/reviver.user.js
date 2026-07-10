@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.3.0
+// @version      1.4.0
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -145,11 +145,7 @@
                     if (isSuccess) {
                         logToGateway('success', '', gatewayXid);
                     } else if (isChanceFailure) {
-                        if (actualChance < 60) {
-                            logToGateway('success', 'failed to revive', gatewayXid);
-                        } else {
-                            logToGateway('fail', 'failed to revive', gatewayXid);
-                        }
+                        logToGateway('fail', 'failed to revive', gatewayXid);
                     } else {
                         let reason = text;
                         if (text.toLowerCase().includes("enough energy")) {
@@ -247,7 +243,7 @@
                     return;
                 }
 
-                
+
 
                 // PHASE 2: Wait for confirmation dialog
                 const profileButtons = document.querySelector('.profile-buttons') || document.body;
@@ -257,7 +253,7 @@
                     if (yesButton) {
                         confirmObserver.disconnect();
                         clearTimeout(confirmTimeout);
-                        
+
                         const dialog = document.querySelector('.profile-buttons-dialog');
                         const reviveInfo = getReviveInfo(dialog || document.body);
                         if (reviveInfo.chance !== null) {
@@ -272,9 +268,9 @@
                         }
                     }
                 });
-                
+
                 confirmObserver.observe(profileButtons, { childList: true, subtree: true });
-                
+
                 confirmTimeout = setTimeout(() => {
                     confirmObserver.disconnect();
                     logToGateway('fail', '[UserScript] Confirmation dialog did not appear.');

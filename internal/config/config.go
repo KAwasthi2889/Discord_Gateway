@@ -27,8 +27,7 @@ type Config struct {
 	// This enables zero-allocation string searching on the hot path.
 	TargetBytes [][]byte
 
-	// NoHistoryAllowed determines if requests with no past revives are accepted.
-	NoHistoryAllowed bool
+
 
 	// RateLimit is the maximum number of browser launches allowed per minute.
 	// Defaults to 5 if not specified.
@@ -50,9 +49,6 @@ type Config struct {
 
 	// Shitlist contains the pre-loaded shitlist configuration to avoid disk I/O on the hot path.
 	Shitlist *ShitlistConfig
-
-	// BillableFailures determines whether chance-based revive failures are billed.
-	BillableFailures bool
 }
 
 // GetUserDir resolves the absolute path to the current user's dedicated configuration
@@ -96,12 +92,6 @@ func Load() (*Config, error) {
 	channelIDsStr := envMap["CHANNEL_IDS"]
 	if channelIDsStr == "" {
 		channelIDsStr = os.Getenv("CHANNEL_IDS")
-	}
-
-	// Resolve the no history allowed flag.
-	noHistoryStr := envMap["NO_HISTORY_ALLOWED"]
-	if noHistoryStr == "" {
-		noHistoryStr = os.Getenv("NO_HISTORY_ALLOWED")
 	}
 
 	// Resolve rate limit (default: 5)
@@ -150,12 +140,6 @@ func Load() (*Config, error) {
 		minChance = 60
 	}
 
-	billableFailsStr := envMap["BILLABLE_FAILURES"]
-	if billableFailsStr == "" {
-		billableFailsStr = os.Getenv("BILLABLE_FAILURES")
-	}
-	billableFailures := strings.ToLower(billableFailsStr) == "true"
-
 	// Enforce strict validation on required configuration keys.
 	if token == "" {
 		return nil, fmt.Errorf("DISCORD_TOKEN must be set in %s or environment", envPath)
@@ -172,14 +156,12 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Token:                 token,
 		TargetChannelIDs:      make(map[string]bool),
-		NoHistoryAllowed:      strings.ToLower(noHistoryStr) == "true",
 		RateLimit:             rateLimit,
 		MinAgeDays:            minAgeDays,
 		DailyQuota:            dailyQuota,
 		NukeAPIToken:          nukeToken,
 		MinChance:             minChance,
 		Shitlist:              slCfg,
-		BillableFailures:      billableFailures,
 	}
 
 	// Process the comma-separated channel IDs and compute the hot-path signatures.

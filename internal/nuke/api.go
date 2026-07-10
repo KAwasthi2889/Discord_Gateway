@@ -54,6 +54,7 @@ func (c *Client) RefreshAll() bool {
 			ShitListCategoryID *int        `json:"shitListCategoryId"`
 			IsFactionBan       interface{} `json:"isFactionBan"`
 			IsApproved         interface{} `json:"isApproved"`
+			CreatedAt          *string     `json:"createdAt"`
 		}
 		if err := json.Unmarshal(item, &entry); err == nil {
 			if entry.ShitListCategoryID != nil && *entry.ShitListCategoryID == 5 {
@@ -95,7 +96,16 @@ func (c *Client) RefreshAll() bool {
 			}
 
 			if parseBool(entry.IsFactionBan) && entry.FactionID != nil {
-				newShitlistFactions[*entry.FactionID] = struct{}{}
+				isOldBan := false
+				if entry.CreatedAt != nil {
+					parsedDate := parseDate(entry.CreatedAt)
+					if parsedDate != nil && time.Since(*parsedDate).Hours() > 2*365*24 {
+						isOldBan = true
+					}
+				}
+				if !isOldBan {
+					newShitlistFactions[*entry.FactionID] = struct{}{}
+				}
 			}
 		}
 	})
