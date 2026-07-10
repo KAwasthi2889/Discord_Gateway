@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Gateway Reviver
 // @namespace    http://tampermonkey.net/
-// @version      1.4.0
+// @version      1.4.1
 // @description  Event-driven auto-revives based on Discord Gateway callbacks.
 // @author       Ever2889 [4040971]
 // @match        https://www.torn.com/profiles.php*
@@ -203,8 +203,9 @@
         const text = descEl.textContent.trim().toLowerCase();
         if (text.includes("traveling")) return "Not in a hospital, Travelling";
         if (text === "okay") return "User is not in hospital anymore";
+        if (text.includes("in hospital for")) return "You are in another country";
         if (text.includes("hospital")) {
-            if (text.startsWith("in a ") && text.includes("hospital")) return "User is in a different country's hospital";
+            if (text.startsWith("in a ")) return "User is in a different country's hospital";
             return `UNEXPECTED ERROR: Unknown State: ${text}`;
         }
         if (text.startsWith("hiding out in") || text.startsWith("in ")) return "Not in Hospital, In a different country";
@@ -280,8 +281,8 @@
             }, 150);
         };
 
-        if (revButton.classList.contains('disabled') || revButton.classList.contains('cross')) {
-            console.log("[UserScript] Revive button is disabled. Watching for it to become active...");
+        if (revButton.classList.contains('cross')) {
+            console.log("[UserScript] Target has revives disabled (cross). Watching for it to become active...");
             let disabledTimeout;
 
             const disabledObserver = new MutationObserver(() => {
@@ -296,9 +297,13 @@
 
             disabledTimeout = setTimeout(() => {
                 disabledObserver.disconnect();
-                logToGateway('fail', '[UserScript] Revive button disabled');
+                logToGateway('fail', '[UserScript] Target kept revives disabled.');
             }, 15000);
 
+            return;
+        } else if (revButton.classList.contains('disabled')) {
+            // No cross, just disabled. It means we (the reviver) are restricted.
+            logToGateway('fail', '[UserScript] You are in hospital or jail.');
             return;
         }
 

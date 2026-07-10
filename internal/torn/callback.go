@@ -78,19 +78,27 @@ func StartCallbackServer(getAppConfig func() *config.Config, quota *DailyQuota, 
 			quota.RecordSuccess()
 			go logger.Log(payload, contractNote)
 		} else {
-			if reason == "failed to revive" {
-				slog.Info("Revive failed", "xid", xid, "reason", reason)
-			} else if strings.HasPrefix(reason, "[CRITICAL]") {
-				slog.Error("CRITICAL ERROR", "xid", xid, "reason", reason)
-				if strings.Contains(reason, "CAPTCHA") && onEmergencyShutdown != nil {
-					slog.Warn("Initiating emergency shutdown due to CAPTCHA")
+			reasonLower := strings.ToLower(reason)
+
+			if strings.Contains(reasonLower, "cloudflare") || strings.Contains(reasonLower, "captcha") || strings.HasPrefix(reason, "[CRITICAL]") {
+				slog.Error("CRITICAL ERROR: Cloudflare/CAPTCHA detected", "xid", xid, "reason", reason)
+				if onEmergencyShutdown != nil {
+					slog.Warn("Initiating emergency shutdown due to Cloudflare/CAPTCHA")
 					onEmergencyShutdown()
 				}
+			} else if strings.Contains(reasonLower, "enough energy") {
+				slog.Info("Out of energy detected. Initiating emergency gateway shutdown.", "xid", xid)
+				if onEmergencyShutdown != nil {
+					onEmergencyShutdown()
+				}
+			} else if strings.Contains(reason, "UNEXPECTED ERROR:") {
+				slog.Error("Unstandardized error", "xid", xid, "reason", reason)
 			} else {
-				slog.Info("Skipped auto-revive", "xid", xid, "reason", reason)
-			}
-			if strings.Contains(strings.ToLower(reason), "enough energy") {
-				slog.Info("Out of energy detected", "xid", xid)
+				if reason == "failed to revive" {
+					slog.Warn("Revive failed", "xid", xid, "reason", reason)
+				} else {
+					slog.Warn("Skipped auto-revive", "xid", xid, "reason", reason)
+				}
 			}
 		}
 
