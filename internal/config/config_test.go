@@ -16,7 +16,6 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 	// Temporarily set environment variables to bypass the need for an actual .env file
 	os.Setenv("DISCORD_TOKEN", "test_token_123")
 	os.Setenv("CHANNEL_IDS", "111,222,333")
-	os.Setenv("NO_HISTORY_ALLOWED", "true")
 	os.Setenv("RATE_LIMIT", "10")
 	os.Setenv("MIN_AGE_DAYS", "100")
 	os.Setenv("DAILY_QUOTA", "5")
@@ -28,7 +27,6 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 		os.Unsetenv("APPDATA")
 		os.Unsetenv("DISCORD_TOKEN")
 		os.Unsetenv("CHANNEL_IDS")
-		os.Unsetenv("NO_HISTORY_ALLOWED")
 		os.Unsetenv("RATE_LIMIT")
 		os.Unsetenv("MIN_AGE_DAYS")
 		os.Unsetenv("DAILY_QUOTA")
@@ -45,9 +43,6 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 	}
 	if !cfg.TargetChannelIDs["222"] {
 		t.Errorf("Expected TargetChannelIDs to contain '222'")
-	}
-	if !cfg.NoHistoryAllowed {
-		t.Errorf("Expected NoHistoryAllowed to be true")
 	}
 	if cfg.RateLimit != 10 {
 		t.Errorf("Expected RateLimit 10, got %d", cfg.RateLimit)

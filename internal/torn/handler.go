@@ -173,30 +173,11 @@ func (h *Handler) OnMessageCreate(data []byte) {
 			factionIDInt, _ := strconv.Atoi(ExtractFactionID(data))
 
 			shitlistTargetXID := xidInt
-			isOnBehalf := false
-
-			// check if it's an "on behalf of" request for remaining checks
-			if reqStr := ExtractRequesterXID(data); reqStr != "" {
-				if reqInt, err := strconv.Atoi(reqStr); err == nil {
-					// Only use requester if it's different from the target
-					if reqStr != xid {
-						// Overwrite the shitlist target to be the requester
-						shitlistTargetXID = reqInt
-						isOnBehalf = true
-					}
-				}
-			}
-
-			// Local Shitlist Check: Absolutely ignore requests for players on the personal shitlist
-			if cfg.Shitlist != nil && cfg.Shitlist.LocalShitlist[shitlistTargetXID] {
-				slog.Info("Request dropped silently due to local shitlist", "xid", shitlistTargetXID)
-				return
-			}
 
 			hasPaymentHistory := !bytes.Contains(data, tornNoReviveHistory)
 
-			if hasPaymentHistory && !isOnBehalf {
-				// Shortcut: If they have payment history > 0 AND it's a standard request (revivee paying), skip most shitlist checks.
+			if hasPaymentHistory {
+				// Shortcut: If they have payment history > 0 skip most shitlist checks.
 				// ONLY check if the evaluated person has Category 3 (Revive No-Payment).
 				cats := h.nukeClient.GetShitlistCategories(shitlistTargetXID)
 				hasCat3 := false

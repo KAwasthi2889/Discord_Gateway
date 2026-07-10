@@ -125,9 +125,7 @@ func TestGatewayE2E(t *testing.T) {
 		expectNoLog       bool   // If true, expect NO log entry for this XID
 		expectShutdown    bool   // If true, expect process to exit on its own
 		overrideMinChance int    // If non-zero, overrides the default 60% MinChance
-		overrideNoHistory bool   // If true, sets NoHistoryAllowed to true
-		overrideBillableFailures bool // If true, sets BillableFailures to true
-		overrideLocalShitlist []int // If set, populates cfg.Shitlist.LocalShitlist
+
 	}{
 		{
 			name:             "Success - Standard Revive",
@@ -136,14 +134,7 @@ func TestGatewayE2E(t *testing.T) {
 			expectedInLog:    "TestUser,1234567,regular,Torn,No faction",
 		},
 		{
-			name:             "Drop - Local Shitlist",
-			payload:          makeTestPayload("Regular Revive Request", "31337", "No faction", "", true),
-			mockTornScenario: "success",
-			expectNoLog:      true,
-			overrideLocalShitlist: []int{31337},
-		},
-		{
-			name:             "Drop - Shitlisted Requester On Behalf (Even With History)",
+			name:             "Drop - On Behalf Request",
 			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1234567", "No faction", "[Magic [9999]](https://www.torn.com/profiles.php?XID=9999)", true),
 			mockTornScenario: "success",
 			expectNoLog:      true,
@@ -153,7 +144,6 @@ func TestGatewayE2E(t *testing.T) {
 			payload:          makeTestPayload("Regular Revive Request", "9999", "No faction", "", false),
 			mockTornScenario: "success",
 			expectNoLog:      true,
-			overrideNoHistory: true,
 		},
 		{
 			name:             "Success - Shitlisted Player Bypass with History",
@@ -172,7 +162,6 @@ func TestGatewayE2E(t *testing.T) {
 			payload:          makeTestPayload("Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "", false),
 			mockTornScenario: "success",
 			expectNoLog:      true,
-			overrideNoHistory: true,
 		},
 		{
 			name:             "Success - Shitlisted Faction Bypass with History",
@@ -180,18 +169,7 @@ func TestGatewayE2E(t *testing.T) {
 			mockTornScenario: "success",
 			expectedInLog:    "TestUser,1111,regular,Torn",
 		},
-		{
-			name:             "Success - Shitlisted Target (Cat 3) but Clean Requester On Behalf",
-			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "5555", "No faction", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)", true),
-			mockTornScenario: "success",
-			expectedInLog:    "TestUser,5555,regular,Torn,No faction",
-		},
-		{
-			name:             "Drop - Shitlisted Faction with Clean Requester On Behalf (Even With History)",
-			payload:          makeTestPayload("🤝 On Behalf: Regular Revive Request", "1111", "[Faction [8888]](https://www.torn.com/factions.php?step=profile&ID=8888)", "[CleanFriend [1234567]](https://www.torn.com/profiles.php?XID=1234567)", true),
-			mockTornScenario: "success",
-			expectNoLog:      true,
-		},
+
 		{
 			name:             "Success - Faction Contract Override",
 			payload:          makeTestPayload("Regular Revive Request", "2222", "[Faction [7777]](https://www.torn.com/factions.php?step=profile&ID=7777)", "", true),
@@ -241,14 +219,7 @@ func TestGatewayE2E(t *testing.T) {
 			mockTornScenario: "chance_fail", // 100% chance but fails -> return fail
 			expectNoLog:      true,
 		},
-		{
-			name:              "Success - Low Chance Failure",
-			payload:           makeTestPayload("Regular Revive Request", "10007", "No faction", "", true),
-			mockTornScenario:  "low_chance_fail", // 10% chance and fails -> return success
-			expectedInLog:     "TestUser,10007,regular,Torn,No faction",
-			overrideMinChance: 5,                 // 5 < 10, so it attempts it
-			overrideBillableFailures: true,
-		},
+
 		{
 			name:             "Fail - DOM Traveling Hospital",
 			payload:          makeTestPayload("Regular Revive Request", "10002", "No faction", "", true),
@@ -306,26 +277,11 @@ func TestGatewayE2E(t *testing.T) {
 					DailyQuota:       100,
 					RateLimit:        10,
 					MinAgeDays:       10,
-					NoHistoryAllowed: false,
 					NukeAPIToken:     "fake_nuke",
 					MinChance:        60,
 				}
 				if tt.overrideMinChance > 0 {
 					cfg.MinChance = tt.overrideMinChance
-				}
-				if tt.overrideNoHistory {
-					cfg.NoHistoryAllowed = true
-				}
-				if tt.overrideBillableFailures {
-					cfg.BillableFailures = true
-				}
-				if len(tt.overrideLocalShitlist) > 0 {
-					cfg.Shitlist = &config.ShitlistConfig{
-						LocalShitlist: make(map[int]bool),
-					}
-					for _, id := range tt.overrideLocalShitlist {
-						cfg.Shitlist.LocalShitlist[id] = true
-					}
 				}
 				browserChan := make(chan string, 1)
 				browserOverride := func(url string) {

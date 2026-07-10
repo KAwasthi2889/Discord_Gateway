@@ -50,15 +50,15 @@ func IsTornCountry(data []byte) bool {
 // payments in the last 90 days. It achieves this by scanning for specific
 // substring markers within the raw JSON bytes.
 func IsPaidRegularRevive(cfg *config.Config, data []byte) (bool, string) {
+	if bytes.Contains(data, tornRequestedBy) {
+		return false, "on behalf"
+	}
 	if !bytes.Contains(data, tornRegularReviveTitle) &&
 		!bytes.Contains(data, tornregularReviveTitle) {
 		if bytes.Contains(data, tornPremiumReviveTitle) || bytes.Contains(data, tornpremiumReviveTitle) {
 			return false, "Premium revive"
 		}
 		return false, "invalid title"
-	}
-	if !cfg.NoHistoryAllowed && bytes.Contains(data, tornNoReviveHistory) {
-		return false, "0 revives"
 	}
 	return true, ""
 }
@@ -92,11 +92,10 @@ func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, callbackToke
 	xidStr := string(xidBytes)
 
 	minAge := cfg.MinAgeDays
-	isOnBehalf := bytes.Contains(data, tornRequestedBy)
 	hasPaymentHistory := !bytes.Contains(data, tornNoReviveHistory)
 
-	if isOnBehalf || hasPaymentHistory {
-		minAge = 0 // Bypass age check for "On Behalf" requests or those with payment history (shortcut)
+	if hasPaymentHistory {
+		minAge = 0 // Bypass age check for those with payment history (shortcut)
 	}
 
 	// Cast the extracted slice to a string. This is the only allocation in this function.
@@ -131,33 +130,4 @@ func ExtractFactionID(data []byte) string {
 	}
 
 	return string(factionBytes)
-}
-
-// ExtractRequesterXID scans a raw JSON byte slice for an "On Behalf" revive request
-// and dynamically extracts the numeric XID of the original requester.
-//
-// Returns the raw Requester XID as a string, or an empty string if not found.
-func ExtractRequesterXID(data []byte) string {
-	idx := bytes.Index(data, tornRequestedBy)
-	if idx == -1 {
-		return ""
-	}
-
-	// Search backwards from the "Requested By" field to find the closest profile link
-	prefixIdx := bytes.LastIndex(data[:idx], tornProfilePrefix)
-	if prefixIdx == -1 {
-		return ""
-	}
-
-	end := prefixIdx + len(tornProfilePrefix)
-	for end < len(data) && data[end] >= '0' && data[end] <= '9' {
-		end++
-	}
-
-	xidBytes := data[prefixIdx+len(tornProfilePrefix) : end]
-	if len(xidBytes) == 0 {
-		return ""
-	}
-
-	return string(xidBytes)
 }

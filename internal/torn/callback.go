@@ -73,19 +73,8 @@ func StartCallbackServer(getAppConfig func() *config.Config, quota *DailyQuota, 
 			return
 		}
 
-		if status == "success" && reason != "" {
-			cfg := getAppConfig()
-			if cfg != nil && !cfg.BillableFailures {
-				status = "fail"
-			}
-		}
-
 		if status == "success" {
-			if reason != "" {
-				slog.Info("Revive failed but treated as success (billable)", "xid", xid, "reason", reason)
-			} else {
-				slog.Info("Revive successful", "xid", xid)
-			}
+			slog.Info("Revive successful", "xid", xid)
 			quota.RecordSuccess()
 			go logger.Log(payload, contractNote)
 		} else {

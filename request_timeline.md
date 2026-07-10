@@ -73,9 +73,9 @@ This document maps the entire lifecycle of a request from Discord message arriva
 - **Wait for Success Message**:
   - *Failure Condition*: Watches for **5 seconds** after clicking Yes. If no message appears, calls back with fail status: `[UserScript] Success message not found within 5s.`
 - **Evaluate Message**: 
-  - *Success Condition 1 (Actual Success)*: Reads "successfully revived" or `.t-green` class. Calls back with `status=success`.
-  - *Success Condition 2 (Chance Failure)*: Reads `"attempted to revive"` and `"but failed"` anywhere in the text. Calls back with **`status=success`** (so Go increments the quota) and `reason=failed to revive`.
-  - *Failure Condition*: Reads any other text. 
+  - *Success Condition (Actual Success)*: Reads "successfully revived" or `.t-green` class. Calls back with `status=success`.
+  - *Failure Condition (Chance Failure)*: Reads `"attempted to revive"` and `"but failed"` anywhere in the text. Calls back with `status=fail` and `reason=failed to revive`.
+  - *Failure Condition (Other)*: Reads any other text. 
     - Specifically standardizes matches: `"Not enough energy"` (from "You do not have enough energy to perform this action.").
     - If it's an unfamiliar error dialog, returns the exact string of the unfamiliar error.
     Calls back with `status=fail` and the exact text as the `reason`.
@@ -88,8 +88,7 @@ This document maps the entire lifecycle of a request from Discord message arriva
   - The Go server applies no logic to standardizing error reasons; it logs exactly what the userscript sends.
   - If `status == "success"`:
     - **Records to `records.csv`** and increments the Daily Quota.
-    - If `reason` contains "failed to revive", logs: `[INFO] Failed to revive xid={xid}`.
-    - Otherwise, logs: `[INFO] Revive successful xid={xid}`.
+    - Logs: `[INFO] Revive successful xid={xid}`.
   - If `status == "fail"`:
     - Logs `[INFO] Skipped auto-revive xid={xid} reason={reason}`.
     - *Does not* increment quota, *does not* write to `records.csv`.
