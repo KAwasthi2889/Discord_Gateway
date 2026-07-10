@@ -91,20 +91,22 @@ func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, callbackToke
 
 	xidStr := string(xidBytes)
 
-	minAge := cfg.MinAgeDays
 	hasPaymentHistory := !bytes.Contains(data, tornNoReviveHistory)
 
-	if hasPaymentHistory {
-		minAge = 0 // Bypass age check for those with payment history (shortcut)
+	// If no payment history, fetch BS synchronously from FFScouter
+	if !hasPaymentHistory {
+		bs := GetBattleStats(cfg.FFScouterAPIKey, xidStr)
+		if bs < cfg.MinBattleStats {
+			return "", "" // Drop the target entirely, fail-closed on low/null BS
+		}
 	}
 
 	// Cast the extracted slice to a string. This is the only allocation in this function.
-	// Append #autorevive={MinAgeDays}&cbport={callbackPort} so the userscript knows:
+	// Append #autorevive=1&cbport={callbackPort} so the userscript knows:
 	//   1. This tab was opened by the gateway (autorevive trigger)
-	//   2. The configured minimum age threshold (0 means bypass)
-	//   3. Where to send the success callback
-	//   4. The auth token to prevent localhost SSRF/injection
-	link := string(data[idx:end]) + "#autorevive=" + strconv.Itoa(minAge) + "&cbport=" + strconv.Itoa(callbackPort) + "&token=" + callbackToken
+	//   2. Where to send the success callback
+	//   3. The auth token to prevent localhost SSRF/injection
+	link := string(data[idx:end]) + "#autorevive=1&cbport=" + strconv.Itoa(callbackPort) + "&token=" + callbackToken
 	return link, xidStr
 }
 

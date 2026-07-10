@@ -277,7 +277,7 @@ func TestGatewayE2E(t *testing.T) {
 					TargetBytes:      [][]byte{[]byte(`"channel_id":"111"`), []byte(`"channel_id":"222"`)},
 					DailyQuota:       100,
 					RateLimit:        10,
-					MinAgeDays:       10,
+					MinBattleStats:   100000,
 					NukeAPIToken:     "fake_nuke",
 					MinChance:        60,
 				}

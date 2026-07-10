@@ -33,9 +33,11 @@ type Config struct {
 	// Defaults to 5 if not specified.
 	RateLimit int
 
-	// MinAgeDays is the minimum account age in days for an auto-revive.
-	// Defaults to 365 if not specified.
-	MinAgeDays int
+	// FFScouterAPIKey is the API token used to fetch Battle Stat estimates.
+	FFScouterAPIKey string
+
+	// MinBattleStats is the minimum battle stat estimate required for an auto-revive.
+	MinBattleStats int
 
 	// DailyQuota is the maximum number of successful revives allowed per day.
 	// Clamped to 1–15. Defaults to 15 if not specified or out of range.
@@ -104,14 +106,20 @@ func Load() (*Config, error) {
 		rateLimit = 5
 	}
 
-	// Resolve min age days (default: 365)
-	minAgeStr := envMap["MIN_AGE_DAYS"]
-	if minAgeStr == "" {
-		minAgeStr = os.Getenv("MIN_AGE_DAYS")
+	// Resolve FFScouter API Key
+	ffscouterKey := envMap["FFSCOUTER_API_KEY"]
+	if ffscouterKey == "" {
+		ffscouterKey = os.Getenv("FFSCOUTER_API_KEY")
 	}
-	minAgeDays, err := strconv.Atoi(minAgeStr)
-	if err != nil || minAgeDays <= 0 {
-		minAgeDays = 365
+
+	// Resolve min battle stats (default: 100000)
+	minBSStr := envMap["MIN_BATTLE_STATS"]
+	if minBSStr == "" {
+		minBSStr = os.Getenv("MIN_BATTLE_STATS")
+	}
+	minBattleStats, err := strconv.Atoi(minBSStr)
+	if err != nil || minBattleStats < 0 {
+		minBattleStats = 100000
 	}
 
 	// Resolve daily quota (default: 15, clamped to 1–15)
@@ -157,7 +165,8 @@ func Load() (*Config, error) {
 		Token:                 token,
 		TargetChannelIDs:      make(map[string]bool),
 		RateLimit:             rateLimit,
-		MinAgeDays:            minAgeDays,
+		FFScouterAPIKey:       ffscouterKey,
+		MinBattleStats:        minBattleStats,
 		DailyQuota:            dailyQuota,
 		NukeAPIToken:          nukeToken,
 		MinChance:             minChance,

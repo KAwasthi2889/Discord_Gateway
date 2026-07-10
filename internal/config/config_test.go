@@ -17,7 +17,7 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 	os.Setenv("DISCORD_TOKEN", "test_token_123")
 	os.Setenv("CHANNEL_IDS", "111,222,333")
 	os.Setenv("RATE_LIMIT", "10")
-	os.Setenv("MIN_AGE_DAYS", "100")
+	os.Setenv("MIN_BATTLE_STATS", "50000")
 	os.Setenv("DAILY_QUOTA", "5")
 	os.Setenv("MIN_CHANCE", "40")
 
@@ -28,7 +28,7 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 		os.Unsetenv("DISCORD_TOKEN")
 		os.Unsetenv("CHANNEL_IDS")
 		os.Unsetenv("RATE_LIMIT")
-		os.Unsetenv("MIN_AGE_DAYS")
+		os.Unsetenv("MIN_BATTLE_STATS")
 		os.Unsetenv("DAILY_QUOTA")
 		os.Unsetenv("MIN_CHANCE")
 	}()
@@ -47,8 +47,8 @@ func TestLoadWithEnvironmentVariables(t *testing.T) {
 	if cfg.RateLimit != 10 {
 		t.Errorf("Expected RateLimit 10, got %d", cfg.RateLimit)
 	}
-	if cfg.MinAgeDays != 100 {
-		t.Errorf("Expected MinAgeDays 100, got %d", cfg.MinAgeDays)
+	if cfg.MinBattleStats != 50000 {
+		t.Errorf("expected MinBattleStats to be 50000, got %d", cfg.MinBattleStats)
 	}
 	if cfg.DailyQuota != 5 {
 		t.Errorf("Expected DailyQuota 5, got %d", cfg.DailyQuota)
@@ -94,8 +94,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.RateLimit != 5 {
 		t.Errorf("Expected default RateLimit 5, got %d", cfg.RateLimit)
 	}
-	if cfg.MinAgeDays != 365 {
-		t.Errorf("Expected default MinAgeDays 365, got %d", cfg.MinAgeDays)
+	if cfg.MinBattleStats != 100000 {
+		t.Errorf("expected default MinBattleStats to be 100000, got %d", cfg.MinBattleStats)
 	}
 	if cfg.DailyQuota != 15 {
 		t.Errorf("Expected default DailyQuota 15, got %d", cfg.DailyQuota)
