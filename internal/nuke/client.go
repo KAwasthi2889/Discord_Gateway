@@ -26,6 +26,8 @@ type Client struct {
 	shitlistFactions map[int]struct{}
 	factionContracts map[int]ContractData
 	playerContracts  map[int]ContractData
+
+	stopRefresh chan struct{}
 }
 
 // NewClient initializes a new Nuke API client. It does not auto-refresh if it has a cache file to load.
@@ -39,6 +41,7 @@ func NewClient(token string) *Client {
 		shitlistFactions: make(map[int]struct{}),
 		factionContracts: make(map[int]ContractData),
 		playerContracts:  make(map[int]ContractData),
+		stopRefresh:      make(chan struct{}),
 	}
 	return c
 }
@@ -63,6 +66,15 @@ func (c *Client) LoadOrFetch(cachePath string) {
 
 	go c.startPeriodicRefresh()
 }
+
+// StopPeriodicRefresh signals the background refresh goroutine to exit gracefully.
+func (c *Client) StopPeriodicRefresh() {
+	select {
+	case c.stopRefresh <- struct{}{}:
+	default:
+	}
+}
+
 // GetShitlistCategories returns the categories a player is shitlisted under.
 func (c *Client) GetShitlistCategories(playerID int) []int {
 	c.mu.RLock()
