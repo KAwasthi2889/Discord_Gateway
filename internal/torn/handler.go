@@ -66,7 +66,9 @@ func NewHandler(ctx context.Context, cfg *config.Config, logFile *os.File, userD
 	h.cfg.Store(cfg)
 	h.browser.Store(NewBrowserLauncher(cfg))
 
-	cbPort, pongChan, cbToken, err := StartCallbackServer(func() *config.Config { return h.cfg.Load() }, quota, cache, logger, nil)
+	cbPort, pongChan, cbToken, err := StartCallbackServer(func() *config.Config { return h.cfg.Load() }, quota, cache, logger, func() {
+		os.Exit(0)
+	})
 	if err != nil {
 		slog.Warn("Callback server failed to start", "error", err)
 		slog.Info("Daily quota will still gate browser launches, but success tracking is disabled")
