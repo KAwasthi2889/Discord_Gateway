@@ -91,16 +91,6 @@ func ExtractProfileLinkAndXID(cfg *config.Config, callbackPort int, callbackToke
 
 	xidStr := string(xidBytes)
 
-	hasPaymentHistory := !bytes.Contains(data, tornNoReviveHistory)
-
-	// If no payment history, fetch BS synchronously from FFScouter
-	if !hasPaymentHistory {
-		bs := GetBattleStats(cfg.FFScouterAPIKey, xidStr)
-		if bs < cfg.MinBattleStats {
-			return "", "" // Drop the target entirely, fail-closed on low/null BS
-		}
-	}
-
 	// Cast the extracted slice to a string. This is the only allocation in this function.
 	// Append #autorevive=1&cbport={callbackPort} so the userscript knows:
 	//   1. This tab was opened by the gateway (autorevive trigger)

@@ -67,7 +67,8 @@ func NewHandler(ctx context.Context, cfg *config.Config, logFile *os.File, userD
 	h.browser.Store(NewBrowserLauncher(cfg))
 
 	cbPort, pongChan, cbToken, err := StartCallbackServer(func() *config.Config { return h.cfg.Load() }, quota, cache, logger, func() {
-		os.Exit(0)
+		p, _ := os.FindProcess(os.Getpid())
+		p.Signal(os.Interrupt)
 	})
 	if err != nil {
 		slog.Warn("Callback server failed to start", "error", err)
@@ -212,16 +213,23 @@ func (h *Handler) OnMessageCreate(data []byte) {
 				return
 			}
 
-			link, contractNote := h.buildContractUrl(cfg, link, xidInt, factionIDInt)
-
-			if h.browser.Load().Open(link, xid) {
-				// Stage 4: Cache payload and wait for callback (Deferred Allocation)
-				// Copy the payload to avoid a data race with the websocket read buffer.
-				logCopy := make([]byte, len(data))
-				copy(logCopy, data)
-				h.cache.Add(xid, logCopy, contractNote)
+			if hasPaymentHistory {
+				// Fast synchronous path: no FFScouter needed, launch immediately.
+				h.dispatchBrowserLaunch(cfg, link, xid, xidInt, factionIDInt, data)
 			} else {
-				slog.Info("Request rejected due to rate limit")
+				// Async path: FFScouter HTTP call would block the read pump.
+				// Copy the payload now to avoid a data race with the websocket buffer,
+				// then dispatch the FFScouter check + browser launch in a goroutine.
+				payloadCopy := make([]byte, len(data))
+				copy(payloadCopy, data)
+				go func() {
+					bs := GetBattleStats(cfg.FFScouterAPIKey, xid)
+					if bs < cfg.MinBattleStats {
+						slog.Info("FFScouter BS too low, dropping", "xid", xid, "bs", bs)
+						return
+					}
+					h.dispatchBrowserLaunch(cfg, link, xid, xidInt, factionIDInt, payloadCopy)
+				}()
 			}
 		} else {
 			slog.Warn("Malformed url extraction rejected")
@@ -235,6 +243,23 @@ func (h *Handler) OnMessageCreate(data []byte) {
 			reason = rejectReason
 		}
 		h.handleRejection(reason, data)
+	}
+}
+
+// dispatchBrowserLaunch handles the final stages of the revive pipeline:
+// building the contract URL, launching the browser, and caching the payload.
+// It is safe to call from both the synchronous read pump and async goroutines.
+func (h *Handler) dispatchBrowserLaunch(cfg *config.Config, link, xid string, xidInt, factionIDInt int, data []byte) {
+	link, contractNote := h.buildContractUrl(cfg, link, xidInt, factionIDInt)
+
+	if h.browser.Load().Open(link, xid) {
+		// Copy the payload to avoid a data race with the websocket read buffer.
+		// If data is already a copy (async path), this is a harmless no-op-equivalent.
+		logCopy := make([]byte, len(data))
+		copy(logCopy, data)
+		h.cache.Add(xid, logCopy, contractNote)
+	} else {
+		slog.Info("Request rejected due to rate limit")
 	}
 }
 

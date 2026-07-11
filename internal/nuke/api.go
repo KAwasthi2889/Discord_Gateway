@@ -31,8 +31,14 @@ func parseDate(dateStr *string) *time.Time {
 
 func (c *Client) startPeriodicRefresh() {
 	ticker := time.NewTicker(1 * time.Hour)
-	for range ticker.C {
-		c.RefreshAll()
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			c.RefreshAll()
+		case <-c.stopRefresh:
+			return
+		}
 	}
 }
 

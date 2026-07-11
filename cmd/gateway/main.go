@@ -131,6 +131,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	nukeClient.StopPeriodicRefresh()
 	slog.Info("Saving Nuke cache to disk...")
 	if err := nukeClient.SaveToDisk(nukeCachePath); err != nil {
 		slog.Error("Failed to save Nuke cache", "error", err)
