@@ -111,6 +111,7 @@ func StartCallbackServer(getAppConfig func() *config.Config, quota *DailyQuota, 
 		}
 	}()
 
-	slog.Info("Callback server started", "port", port, "token", token)
+	slog.Info("Callback server started", "port", port)
+	slog.Debug("Callback token generated", "token", token)
 	return port, pongReceived, token, nil
 }

@@ -43,7 +43,8 @@ func GetBattleStats(apiKey string, xid string) int {
 		return 0
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	// Cap response body at 1MB to prevent potential memory exhaustion
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1*1024*1024))
 	if err != nil {
 		return 0
 	}
