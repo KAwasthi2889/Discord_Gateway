@@ -1,9 +1,9 @@
 [Unit]
-Description=Run Discord Gateway Bot daily at 3 AM
+Description=Run Discord Gateway Bot daily at 3AM, 11AM and 7PM
 
 [Timer]
 # Keep the timezone of the server in mind when setting this
-OnCalendar=*-*-* 03:00:00
+OnCalendar=*-*-* 03,11,19:00:00
 Persistent=true
 
 [Install]
